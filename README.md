@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="/static/qwentts.webp" alt="Qwen TTS WebUI" width="600">
+</p>
+
 # Qwen TTS WebUI ![icon](/static/qwentts.ico)
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
