@@ -9,7 +9,7 @@ import uuid
 import json
 import hashlib
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union
 import logging
 import yt_dlp
 import tempfile
@@ -47,6 +47,13 @@ GENERATED_METADATA_FILE = Path("generated_metadata.json")
 # Ensure directories exist
 REFERENCE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+def safe_delete_file(file_path: Union[str, Path]) -> None:
+    """Safely delete a file if it exists"""
+    try:
+        Path(file_path).unlink(missing_ok=True)
+    except Exception as e:
+        logger.warning(f"Failed to delete file {file_path}: {e}")
 
 # Initialize metadata files
 if not REFERENCE_METADATA_FILE.exists():
@@ -578,9 +585,9 @@ async def clone_voice_with_upload(
         ref_audio_id_to_use = existing_audio_id
         
         # Clean up temp files
-        temp_path.unlink()
+        safe_delete_file(temp_path)
         if trimmed_path != str(temp_path):
-            Path(trimmed_path).unlink()
+            safe_delete_file(trimmed_path)
         
         # Use existing ref_text if not provided
         if not ref_text:
@@ -596,12 +603,12 @@ async def clone_voice_with_upload(
         try:
             shutil.move(trimmed_path, str(ref_audio_path))
             # Clean up original temp file
-            temp_path.unlink()
+            safe_delete_file(temp_path)
         except Exception as e:
             # Clean up temp files on error
-            temp_path.unlink()
+            safe_delete_file(temp_path)
             if trimmed_path != str(temp_path):
-                Path(trimmed_path).unlink()
+                safe_delete_file(trimmed_path)
             raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
         
         # Auto-transcribe if ref_text not provided (after trimming)
