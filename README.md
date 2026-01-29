@@ -1,8 +1,8 @@
 # Qwen TTS WebUI ![icon](/static/qwentts.ico)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)]
-[![uv](https://img.shields.io/badge/uv-enabled-green.svg)]
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![uv](https://img.shields.io/badge/uv-enabled-green.svg)
 
 Generate speech using AI with Qwen TTS - upload a reference audio and create new voice synthesis in a clean, modern web interface.
 
