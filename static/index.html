@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Cloner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/static/qwentts.ico">
+    <style>
+        :root {
+            --primary: #000000;
+            --secondary: #ffffff;
+            --accent: #ff6b35;
+            --surface: #f0f0f0;
+            --border: #e2e8f0;
+            --text-primary: #000000;
+            --text-secondary: #6b7280;
+            --shadow: rgba(0, 0, 0, 0.1);
+            --radius: 0px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--surface);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 24px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--primary);
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            color: var(--secondary);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.025em;
+        }
+
+        .header p {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+        }
+
+        .tabs-container {
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .tabs {
+            display: flex;
+        }
+
+        .tab {
+            padding: 16px 32px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            position: relative;
+        }
+
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .tab:hover:not(.active) {
+            color: var(--text-primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .card {
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px var(--shadow);
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 16px;
+            font-family: inherit;
+            background: var(--surface);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .audio-upload-tabs {
+            display: flex;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .audio-upload-tabs .tab {
+            padding: 12px 24px;
+            flex: 1;
+            text-align: center;
+            border-bottom: none;
+            border-right: 1px solid var(--border);
+        }
+
+        .audio-upload-tabs .tab:last-child {
+            border-right: none;
+        }
+
+        .audio-upload-tabs .tab.active {
+            background: var(--primary);
+            color: var(--secondary);
+        }
+
+        .btn {
+            background: var(--primary);
+            color: var(--secondary);
+            border: 1px solid var(--border);
+            padding: 14px 28px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--shadow);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin: 16px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .audio-player {
+            width: 100%;
+            margin: 16px 0;
+            border-radius: var(--radius);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+            padding: 16px;
+            border-radius: var(--radius);
+            margin: 16px 0;
+        }
+
+        .result-audio {
+            width: 100%;
+            margin: 16px 0;
+            border-radius: var(--radius);
+        }
+
+        .generated-audio-item {
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            padding: 24px;
+            margin-bottom: 16px;
+            border-radius: var(--radius);
+            transition: all 0.2s ease;
+        }
+
+        .generated-audio-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px var(--shadow);
+        }
+
+        .generated-audio-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .generated-audio-meta {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .generated-audio-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-top: 16px;
+        }
+
+        .generated-audio-controls audio {
+            flex: 1;
+        }
+
+        .generated-audio-controls .btn {
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 16px;
+            }
+            
+            .card {
+                padding: 24px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .generated-audio-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .generated-audio-controls .btn {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+
+                <div>
+                    <h1>Qwen TTS</h1>
+                    <p>Generate speech using AI - upload a reference audio and create new voice synthesis</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="tabs-container">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('existing')">Use Existing Reference</div>
+                <div class="tab" onclick="switchTab('upload')">Upload New Reference</div>
+            </div>
+        </div>
+        
+        <div class="card">
+
+            <!-- Existing Reference Tab -->
+            <div id="existing-tab" class="tab-content active">
+                <div class="form-group">
+                    <label for="reference-select">Select Reference Audio:</label>
+                    <select id="reference-select" onchange="selectReferenceFromDropdown()">
+                        <option value="">-- Choose a reference audio --</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="reference-preview" style="display: none;">
+                    <label>Preview:</label>
+                    <audio controls class="audio-player" id="preview-audio">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>
+
+                <div class="form-group" id="reference-rename" style="display: none;">
+                    <label for="reference-name-input">Reference Name:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="reference-name-input" placeholder="Enter a custom name for this reference..." style="flex: 1; padding: 12px; border: 2px solid #4a4a4a; border-radius: 8px; font-size: 16px; background: #4a4a4a; color: #e0e0e0;">
+                        <button class="btn" onclick="renameReference()" style="padding: 12px 20px;">Rename</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="text-existing">Text to Generate:</label>
+                    <textarea id="text-existing" placeholder="Enter the text you want to generate in the cloned voice...">Hello, this is a test of the voice cloning system. How does it sound?</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="language-existing">Language:</label>
+                    <select id="language-existing">
+                        <option value="">Loading languages...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="ref-text-override">Reference Text (optional - override stored transcription):</label>
+                    <input type="text" id="ref-text-override" placeholder="Leave empty to use stored transcription">
+                </div>
+
+                <button class="btn" onclick="cloneWithExistingReference()">Clone Voice</button>
+            </div>
+
+            <!-- Upload Reference Tab -->
+            <div id="upload-tab" class="tab-content">
+                <div class="form-group">
+                    <label>Reference Audio Source:</label>
+                    <div class="audio-upload-tabs">
+                        <div class="tab active" onclick="switchAudioSource('file')">Upload File</div>
+                        <div class="tab" onclick="switchAudioSource('record')">Record Audio</div>
+                        <div class="tab" onclick="switchAudioSource('youtube')">YouTube</div>
+                    </div>
+                </div>
+
+                <!-- File Upload Section -->
+                <div id="file-source" class="tab-content active">
+                    <div class="form-group">
+                        <label for="reference-file">Reference Audio File:</label>
+                        <input type="file" id="reference-file" accept="audio/*" required>
+                    </div>
+                </div>
+
+                <!-- Recording Section -->
+                <div id="record-source" class="tab-content">
+                    <div class="form-group">
+                        <label>Record Reference Audio:</label>
+                        <div style="text-align: center; padding: 20px; border: 2px dashed #4a4a4a; border-radius: 8px; margin-bottom: 15px;">
+                            <button id="record-btn" class="btn" onclick="toggleRecording()">Start Recording</button>
+                            <button id="stop-btn" class="btn" onclick="stopRecording()" style="display: none; margin-left: 10px;">Stop Recording</button>
+                            <p id="recording-status" style="margin-top: 15px; color: #aaff00;"></p>
+                        </div>
+                        <audio id="recorded-audio" controls class="audio-player" style="display: none;"></audio>
+                    </div>
+                </div>
+
+                <!-- YouTube Section -->
+                <div id="youtube-source" class="tab-content">
+                    <div class="form-group">
+                        <label for="youtube-url">YouTube Video URL:</label>
+                        <input type="text" id="youtube-url" placeholder="https://www.youtube.com/watch?v=...">
+                    </div>
+                    <div class="form-group">
+                        <label for="youtube-name">Reference Name (optional):</label>
+                        <input type="text" id="youtube-name" placeholder="Enter a name for this reference audio...">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="ref-text">Reference Text (optional - will auto-transcribe if empty):</label>
+                    <input type="text" id="ref-text" placeholder="Leave empty for automatic transcription">
+                </div>
+
+                <div class="form-group">
+                    <label for="text-upload">Text to Generate:</label>
+                    <textarea id="text-upload" placeholder="Enter the text you want to generate in the cloned voice...">Hello, this is a test of the voice cloning system. How does it sound?</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="language-upload">Language:</label>
+                    <select id="language-upload">
+                        <option value="">Loading languages...</option>
+                    </select>
+                </div>
+
+                <button class="btn" onclick="cloneWithUpload()">Upload & Clone</button>
+            </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div id="progress-section" class="card hidden">
+            <h3>Processing...</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <p id="progress-text">Initializing voice cloner...</p>
+            <button id="cancel-btn" class="btn" onclick="cancelGeneration()" style="background: #dc3545; margin-top: 15px;">Cancel Generation</button>
+        </div>
+
+        <!-- Result Section -->
+        <div id="result-section" class="card hidden">
+            <h3>Voice Cloning Complete!</h3>
+            <audio controls class="audio-player" id="result-audio">
+                Your browser does not support the audio element.
+            </audio>
+            <br><br>
+            <a href="#" id="download-link" class="btn" download>Download Audio</a>
+        </div>
+
+        <!-- Error Section -->
+        <div id="error-section" class="card error hidden">
+            <h3>Error</h3>
+            <p id="error-message"></p>
+        </div>
+
+        <!-- Generated Audios Section -->
+            <div class="card">
+                <h3>Generated Audios</h3>
+                <div id="generated-audios-list">
+                    <p>No generated audios found. Create your first voice clone!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Links Section -->
+        <div class="card" style="text-align: center; margin-top: 48px;">
+            <h3 style="margin-bottom: 16px;">Support & More</h3>
+            <div style="display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;">
+                <a href="https://github.com/AfkaraLP/qwen3-tts-webui" target="_blank" rel="noopener noreferrer" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; gap: 8px; padding: 12px 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--secondary); transition: all 0.2s ease;">
+                    <img src="/static/github-142-svgrepo-com.svg" alt="GitHub" width="20" height="20" style="fill: currentColor;">
+                    View on GitHub
+                </a>
+                <a href="https://ko-fi.com/afkaralp" target="_blank" rel="noopener noreferrer" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; gap: 8px; padding: 12px 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--secondary); transition: all 0.2s ease;">
+                    <img src="/static/kofi-svgrepo-com.svg" alt="Ko-fi" width="20" height="20" style="fill: currentColor;">
+                    Support on Ko-fi
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedReferenceId = null;
+        let currentTaskId = null;
+        let progressInterval = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let recordedBlob = null;
+        let currentAudioSource = 'file';
+        let referencesData = {};
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadReferences();
+            loadLanguages();
+            loadGeneratedAudios();
+        });
+
+        function switchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tabs .tab:nth-child(${tab === 'existing' ? '1' : '2'})`).classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(`${tab}-tab`).classList.add('active');
+            
+            // Hide other sections
+            hideAllSections();
+        }
+
+        function switchAudioSource(source) {
+            currentAudioSource = source;
+            
+            // Update tab buttons in upload section
+            const uploadTabs = document.querySelectorAll('.audio-upload-tabs .tab');
+            uploadTabs.forEach(t => t.classList.remove('active'));
+            const tabIndex = source === 'file' ? 0 : source === 'record' ? 1 : 2;
+            uploadTabs[tabIndex].classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('#upload-tab .tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(`${source}-source`).classList.add('active');
+        }
+
+        function hideAllSections() {
+            document.getElementById('progress-section').classList.add('hidden');
+            document.getElementById('result-section').classList.add('hidden');
+            document.getElementById('error-section').classList.add('hidden');
+        }
+
+        async function loadReferences() {
+            try {
+                const response = await fetch('/references');
+                const references = await response.json();
+                
+                const selectElement = document.getElementById('reference-select');
+                
+                // Clear existing options except the default one
+                selectElement.innerHTML = '<option value="">-- Choose a reference audio --</option>';
+                
+                if (references.length === 0) {
+                    selectElement.innerHTML = '<option value="">No reference audios found. Upload one first!</option>';
+                    return;
+                }
+                
+                references.forEach(ref => {
+                    const option = document.createElement('option');
+                    option.value = ref.id;
+                    option.textContent = ref.name || ref.original_name;
+                    selectElement.appendChild(option);
+                });
+                
+                // Store references for preview functionality
+                window.availableReferences = references;
+                
+                // Store references data for rename functionality
+                referencesData = {};
+                references.forEach(ref => {
+                    referencesData[ref.id] = ref;
+                });
+                
+            } catch (error) {
+                console.error('Error loading references:', error);
+                showError('Failed to load reference audios');
+            }
+        }
+
+        async function loadLanguages() {
+            try {
+                const response = await fetch('/languages');
+                const data = await response.json();
+                
+                const languages = data.languages;
+                
+                // Populate existing reference language dropdown
+                const existingSelect = document.getElementById('language-existing');
+                existingSelect.innerHTML = '';
+                languages.forEach(lang => {
+                    const option = document.createElement('option');
+                    option.value = lang;
+                    option.textContent = lang.charAt(0).toUpperCase() + lang.slice(1);
+                    if (lang === 'English') {
+                        option.selected = true;
+                    }
+                    existingSelect.appendChild(option);
+                });
+                
+                // Populate upload language dropdown
+                const uploadSelect = document.getElementById('language-upload');
+                uploadSelect.innerHTML = '';
+                languages.forEach(lang => {
+                    const option = document.createElement('option');
+                    option.value = lang;
+                    option.textContent = lang.charAt(0).toUpperCase() + lang.slice(1);
+                    if (lang === 'English') {
+                        option.selected = true;
+                    }
+                    uploadSelect.appendChild(option);
+                });
+                
+            } catch (error) {
+                console.error('Error loading languages:', error);
+                showError('Failed to load languages');
+            }
+        }
+
+        async function loadGeneratedAudios() {
+            try {
+                const response = await fetch('/generated');
+                const generatedAudios = await response.json();
+                
+                const container = document.getElementById('generated-audios-list');
+                
+                if (generatedAudios.length === 0) {
+                    container.innerHTML = '<p>No generated audios found. Create your first voice clone!</p>';
+                    return;
+                }
+                
+                container.innerHTML = '';
+                generatedAudios.forEach(audio => {
+                    const audioDiv = document.createElement('div');
+                    audioDiv.className = 'generated-audio-item';
+                    
+                    const titleDiv = document.createElement('div');
+                    titleDiv.className = 'generated-audio-title';
+                    titleDiv.textContent = audio.generated_text.substring(0, 80) + (audio.generated_text.length > 80 ? '...' : '');
+                    
+                    const infoDiv = document.createElement('div');
+                    infoDiv.className = 'generated-audio-meta';
+                    infoDiv.innerHTML = `
+                        Reference: ${audio.ref_audio_name}<br>
+                        Created: ${new Date(parseFloat(audio.created_at) * 1000).toLocaleString()}
+                    `;
+                    
+                    const controlsDiv = document.createElement('div');
+                    controlsDiv.className = 'generated-audio-controls';
+                    
+                    const audioControl = document.createElement('audio');
+                    audioControl.controls = true;
+                    audioControl.src = `/tasks/${audio.id}/audio`;
+                    
+                    const downloadBtn = document.createElement('a');
+                    downloadBtn.href = `/tasks/${audio.id}/audio`;
+                    downloadBtn.download = `cloned_voice_${audio.id}.wav`;
+                    downloadBtn.className = 'btn';
+                    downloadBtn.textContent = 'Download';
+                    
+                    controlsDiv.appendChild(audioControl);
+                    controlsDiv.appendChild(downloadBtn);
+                    
+                    audioDiv.appendChild(titleDiv);
+                    audioDiv.appendChild(infoDiv);
+                    audioDiv.appendChild(controlsDiv);
+                    container.appendChild(audioDiv);
+                });
+                
+            } catch (error) {
+                console.error('Error loading generated audios:', error);
+                showError('Failed to load generated audios');
+            }
+        }
+
+        function selectReferenceFromDropdown() {
+            const selectElement = document.getElementById('reference-select');
+            selectedReferenceId = selectElement.value;
+            
+            const previewDiv = document.getElementById('reference-preview');
+            const previewAudio = document.getElementById('preview-audio');
+            const renameDiv = document.getElementById('reference-rename');
+            const nameInput = document.getElementById('reference-name-input');
+            
+            if (selectedReferenceId) {
+                // Show preview and load audio
+                previewDiv.style.display = 'block';
+                previewAudio.src = `/references/${selectedReferenceId}/audio`;
+                
+                // Show rename section and populate with current name
+                renameDiv.style.display = 'block';
+                const refData = referencesData[selectedReferenceId];
+                nameInput.value = refData.name || refData.original_name;
+            } else {
+                // Hide preview and rename sections
+                previewDiv.style.display = 'none';
+                renameDiv.style.display = 'none';
+                previewAudio.src = '';
+            }
+        }
+
+        async function renameReference() {
+            if (!selectedReferenceId) {
+                showError('Please select a reference audio first');
+                return;
+            }
+            
+            const nameInput = document.getElementById('reference-name-input');
+            const newName = nameInput.value.trim();
+            
+            if (!newName) {
+                showError('Please enter a name for the reference');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/references/${selectedReferenceId}/name`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name: newName })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to rename reference');
+                }
+                
+                const result = await response.json();
+                
+                // Update the stored data
+                if (referencesData[selectedReferenceId]) {
+                    referencesData[selectedReferenceId].name = newName;
+                }
+                
+                // Update the dropdown display
+                const selectElement = document.getElementById('reference-select');
+                const option = selectElement.querySelector(`option[value="${selectedReferenceId}"]`);
+                if (option) {
+                    option.textContent = newName;
+                }
+                
+                showSuccess('Reference renamed successfully');
+                
+            } catch (error) {
+                console.error('Error renaming reference:', error);
+                showError('Failed to rename reference');
+            }
+        }
+
+        async function cloneWithExistingReference() {
+            if (!selectedReferenceId) {
+                showError('Please select a reference audio from the dropdown');
+                return;
+            }
+            
+            const text = document.getElementById('text-existing').value;
+            const refTextOverride = document.getElementById('ref-text-override').value;
+            const language = document.getElementById('language-existing').value;
+            
+            if (!text.trim()) {
+                showError('Please enter text to generate');
+                return;
+            }
+            
+            await performCloning('/clone', {
+                text: text,
+                ref_audio_id: selectedReferenceId,
+                ref_text: refTextOverride || undefined,
+                language: language
+            });
+        }
+
+        async function cloneWithUpload() {
+            const text = document.getElementById('text-upload').value;
+            const refText = document.getElementById('ref-text').value;
+            const language = document.getElementById('language-upload').value;
+            
+            if (!text.trim()) {
+                showError('Please enter text to generate');
+                return;
+            }
+            
+            if (currentAudioSource === 'youtube') {
+                const youtubeUrl = document.getElementById('youtube-url').value;
+                const youtubeName = document.getElementById('youtube-name').value;
+                
+                if (!youtubeUrl.trim()) {
+                    showError('Please enter a YouTube URL');
+                    return;
+                }
+                
+                await performCloning('/clone-with-youtube', {
+                    youtube_url: youtubeUrl,
+                    text: text,
+                    ref_text: refText || undefined,
+                    language: language,
+                    name: youtubeName || undefined
+                });
+            } else {
+                let file;
+                
+                if (currentAudioSource === 'file') {
+                    const fileInput = document.getElementById('reference-file');
+                    file = fileInput.files[0];
+                    
+                    if (!file) {
+                        showError('Please select a reference audio file');
+                        return;
+                    }
+                } else { // record
+                    if (!recordedBlob) {
+                        showError('Please record audio first');
+                        return;
+                    }
+                    file = new File([recordedBlob], 'recorded_audio.wav', { type: 'audio/wav' });
+                }
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('text', text);
+                formData.append('language', language);
+                if (refText.trim()) {
+                    formData.append('ref_text', refText);
+                }
+                
+                await performCloning('/clone-with-upload', formData, true);
+            }
+        }
+
+        async function performCloning(endpoint, data, isFormData = false) {
+            hideAllSections();
+            
+            const progressSection = document.getElementById('progress-section');
+            progressSection.classList.remove('hidden');
+            
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: isFormData ? {} : { 'Content-Type': 'application/json' },
+                    body: isFormData ? data : JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Failed to start cloning');
+                }
+                
+                const result = await response.json();
+                currentTaskId = result.task_id;
+                
+                // Start polling for progress
+                startProgressPolling();
+                
+            } catch (error) {
+                console.error('Error starting cloning:', error);
+                showError(error.message);
+            }
+        }
+
+        function startProgressPolling() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+            
+            progressInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/tasks/${currentTaskId}`);
+                    const task = await response.json();
+                    
+                    updateProgress(task);
+                    
+                    if (task.status === 'completed') {
+                        clearInterval(progressInterval);
+                        showResult(task.output_path);
+                        loadGeneratedAudios(); // Refresh the generated audios list
+                    } else if (task.status === 'failed') {
+                        clearInterval(progressInterval);
+                        showError(task.error || 'Cloning failed');
+                    }
+                } catch (error) {
+                    console.error('Error polling task status:', error);
+                }
+            }, 1000);
+        }
+
+        function updateProgress(task) {
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            
+            const progress = task.progress || 0;
+            progressFill.style.width = `${progress}%`;
+            
+            if (task.status === 'processing') {
+                if (progress < 25) {
+                    progressText.textContent = 'Initializing voice cloner...';
+                } else if (progress < 50) {
+                    progressText.textContent = 'Processing reference audio...';
+                } else if (progress < 75) {
+                    progressText.textContent = 'Generating cloned voice...';
+                } else {
+                    progressText.textContent = 'Finalizing audio...';
+                }
+            } else if (task.status === 'cancelled') {
+                progressText.textContent = 'Generation cancelled';
+                clearInterval(progressInterval);
+                hideAllSections();
+                document.getElementById('error-section').classList.remove('hidden');
+                document.getElementById('error-message').textContent = 'Generation was cancelled';
+            }
+        }
+
+        function showResult(outputPath) {
+            hideAllSections();
+            
+            const resultSection = document.getElementById('result-section');
+            const resultAudio = document.getElementById('result-audio');
+            const downloadLink = document.getElementById('download-link');
+            
+            resultAudio.src = `/tasks/${currentTaskId}/audio`;
+            downloadLink.href = `/tasks/${currentTaskId}/audio`;
+            
+            resultSection.classList.remove('hidden');
+            
+            // Refresh references to potentially include the new one
+            loadReferences();
+        }
+
+        function showError(message) {
+            hideAllSections();
+            
+            const errorSection = document.getElementById('error-section');
+            const errorMessage = document.getElementById('error-message');
+            
+            errorMessage.textContent = message;
+            errorSection.classList.remove('hidden');
+        }
+
+        function showSuccess(message) {
+            // Create a temporary success message
+            const successDiv = document.createElement('div');
+            successDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #28a745;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                z-index: 1000;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            `;
+            successDiv.textContent = message;
+            document.body.appendChild(successDiv);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                document.body.removeChild(successDiv);
+            }, 3000);
+        }
+
+        async function cancelGeneration() {
+            if (!currentTaskId) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/tasks/${currentTaskId}/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    clearInterval(progressInterval);
+                    currentTaskId = null;
+                } else {
+                    const error = await response.json();
+                    showError(`Failed to cancel: ${error.detail}`);
+                }
+            } catch (error) {
+                console.error('Error cancelling task:', error);
+                showError('Failed to cancel generation');
+            }
+        }
+
+        async function toggleRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    recordedBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const audioUrl = URL.createObjectURL(recordedBlob);
+                    const recordedAudio = document.getElementById('recorded-audio');
+                    recordedAudio.src = audioUrl;
+                    recordedAudio.style.display = 'block';
+                };
+
+                mediaRecorder.start();
+                
+                document.getElementById('record-btn').style.display = 'none';
+                document.getElementById('stop-btn').style.display = 'inline-block';
+                document.getElementById('recording-status').textContent = 'Recording... Click Stop when finished.';
+                
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                showError('Could not access microphone. Please check permissions.');
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                
+                document.getElementById('record-btn').style.display = 'inline-block';
+                document.getElementById('stop-btn').style.display = 'none';
+                document.getElementById('recording-status').textContent = 'Recording complete! Audio ready for upload.';
+            }
+        }
+    </script>
+</body>
+</html>

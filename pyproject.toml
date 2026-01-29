@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "voice-cloner"
+version = "0.1.0"
+description = "Easy voice cloning using Qwen TTS"
+authors = [{name = "Voice Cloner", email = "voice@cloner.com"}]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+     "numpy<=2.3",
+     "soundfile>=0.12.0",
+     "click>=8.0.0",
+     "pydub>=0.25.0",
+     "torch>=2.10.0",
+     "torchvision>=0.25.0",
+     "torchaudio>=2.10.0",
+     "xformers>=0.0.34",
+     "qwen-tts",
+     "torch>=2.0.0",
+     "numba>=0.60.0",
+     "librosa>=0.11.0",
+     "openai-whisper>=20231117",
+     "fastapi>=0.104.0",
+     "uvicorn[standard]>=0.24.0",
+     "python-multipart>=0.0.6",
+     "jinja2>=3.1.0",
+     "yt-dlp>=2023.10.0",
+ ]
+
+[project.scripts]
+voice-cloner = "voice_cloner.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/voice_cloner"]
+
+[tool.uv.extra-build-dependencies]
+voice-cloner = ["hatchling", "editables"]

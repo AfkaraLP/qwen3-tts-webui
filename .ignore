@@ -1,0 +1,6 @@
+result/
+uv.lock
+flake.lock
+__pycache__/
+static/qwentts.ico
+static/favicon.svg
