@@ -1,4 +1,4 @@
-# Qwen TTS WebUI ![icon](/static/qwentts.ico =80x80)
+# Qwen TTS WebUI ![icon](/static/qwentts.ico)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)]
