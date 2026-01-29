@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/static/qwentts.webp" alt="Qwen TTS WebUI" width="600">
+  <img src="/static/qwentts.webp" alt="Qwen TTS WebUI" width="300">
 </p>
 
 # Qwen TTS WebUI ![icon](/static/qwentts.ico)
