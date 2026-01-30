@@ -179,3 +179,4 @@ result/
 output/
 reference_audios/
 generated_metadata.json
+reference_metadata.json

@@ -116,6 +116,75 @@ tasks = {}
 cancelled_tasks = set()
 
 
+def reindex_generated_audios():
+    """Reindex generated audios from disk and metadata on startup.
+
+    This ensures that after a server restart, previously generated audios
+    are still accessible via the /tasks/{task_id}/audio endpoint.
+    """
+    global tasks
+
+    generated_metadata = load_generated_metadata()
+    reindexed_count = 0
+    removed_count = 0
+    metadata_updated = False
+
+    # First, reindex from metadata
+    for task_id, data in list(generated_metadata.items()):
+        file_path = OUTPUT_DIR / data["filename"]
+        if file_path.exists():
+            # Repopulate the tasks dictionary with completed task info
+            tasks[task_id] = {
+                "status": "completed",
+                "progress": 100,
+                "output_path": str(file_path),
+                "ref_audio_id": data.get("ref_audio_id", ""),
+            }
+            reindexed_count += 1
+        else:
+            # File no longer exists, remove from metadata
+            del generated_metadata[task_id]
+            metadata_updated = True
+            removed_count += 1
+
+    # Also scan the output directory for any orphaned files not in metadata
+    # (e.g., if metadata was corrupted or manually edited)
+    for audio_file in OUTPUT_DIR.glob("cloned_*.wav"):
+        # Extract task_id from filename (format: cloned_{task_id}.wav)
+        filename = audio_file.name
+        if filename.startswith("cloned_") and filename.endswith(".wav"):
+            task_id = filename[7:-4]  # Remove "cloned_" prefix and ".wav" suffix
+
+            if task_id not in generated_metadata:
+                # Found orphaned file, add to metadata and tasks
+                generated_metadata[task_id] = {
+                    "filename": filename,
+                    "ref_audio_id": "",
+                    "ref_audio_name": "Unknown",
+                    "generated_text": "",
+                    "created_at": str(audio_file.stat().st_ctime),
+                }
+                tasks[task_id] = {
+                    "status": "completed",
+                    "progress": 100,
+                    "output_path": str(audio_file),
+                    "ref_audio_id": "",
+                }
+                metadata_updated = True
+                reindexed_count += 1
+                logger.info(f"Recovered orphaned audio file: {filename}")
+
+    # Save updated metadata if changes were made
+    if metadata_updated:
+        save_generated_metadata(generated_metadata)
+
+    if reindexed_count > 0 or removed_count > 0:
+        logger.info(
+            f"Reindexed {reindexed_count} generated audio(s), "
+            f"removed {removed_count} stale metadata entries"
+        )
+
+
 def initialize_voice_cloner():
     global voice_cloner
     if voice_cloner is None:
@@ -262,6 +331,9 @@ def get_supported_languages():
 
 @app.on_event("startup")
 async def startup_event():
+    # Reindex generated audios first (before voice cloner init, as it's faster)
+    reindex_generated_audios()
+    # Initialize the voice cloner model
     initialize_voice_cloner()
 
 
