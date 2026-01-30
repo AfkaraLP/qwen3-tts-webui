@@ -426,6 +426,70 @@
             background: var(--surface);
         }
 
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: #dc3545;
+            color: white;
+            padding: 16px 20px;
+            border: 3px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
+            font-weight: 600;
+            max-width: 400px;
+            pointer-events: auto;
+            transform: translateX(-120%);
+            animation: slideIn 0.3s ease forwards;
+        }
+
+        .toast.slide-out {
+            animation: slideOut 0.3s ease forwards;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(-120%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(-120%);
+                opacity: 0;
+            }
+        }
+
+        .toast-success {
+            background: #28a745;
+        }
+
+        .toast-error {
+            background: #dc3545;
+        }
+
+        [data-theme="dark"] .toast {
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+        }
+
         /* Links section */
         .links-section {
             text-align: center;
@@ -496,6 +560,9 @@
     </style>
 </head>
 <body>
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+
     <div class="theme-toggle">
         <button onclick="toggleTheme()" id="theme-btn" title="Toggle dark mode">
             <span id="theme-icon">&#9790;</span>
@@ -1063,7 +1130,18 @@
                         showError('Please record audio first');
                         return;
                     }
-                    file = new File([recordedBlob], 'recorded_audio.wav', { type: 'audio/wav' });
+                    // Determine file extension based on MIME type
+                    const mimeToExt = {
+                        'audio/webm': 'webm',
+                        'audio/webm;codecs=opus': 'webm',
+                        'audio/ogg': 'ogg',
+                        'audio/ogg;codecs=opus': 'ogg',
+                        'audio/mp4': 'mp4',
+                        'audio/mpeg': 'mp3',
+                        'audio/wav': 'wav'
+                    };
+                    const ext = mimeToExt[recordedBlob.type] || 'webm';
+                    file = new File([recordedBlob], `recorded_audio.${ext}`, { type: recordedBlob.type });
                 }
                 
                 const formData = new FormData();
@@ -1176,37 +1254,33 @@
             loadReferences();
         }
 
+        function showToast(message, type = 'error', duration = 5000) {
+            const container = document.getElementById('toast-container');
+            
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            
+            container.appendChild(toast);
+            
+            // Slide out and remove after duration
+            setTimeout(() => {
+                toast.classList.add('slide-out');
+                // Remove from DOM after animation completes
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, duration);
+        }
+
         function showError(message) {
-            hideAllSections();
-            
-            const errorSection = document.getElementById('error-section');
-            const errorMessage = document.getElementById('error-message');
-            
-            errorMessage.textContent = message;
-            errorSection.classList.remove('hidden');
+            showToast(message, 'error', 5000);
         }
 
         function showSuccess(message) {
-            // Create a temporary success message
-            const successDiv = document.createElement('div');
-            successDiv.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #28a745;
-                color: white;
-                padding: 15px 20px;
-                border-radius: 8px;
-                z-index: 1000;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            `;
-            successDiv.textContent = message;
-            document.body.appendChild(successDiv);
-            
-            // Remove after 3 seconds
-            setTimeout(() => {
-                document.body.removeChild(successDiv);
-            }, 3000);
+            showToast(message, 'success', 3000);
         }
 
         async function cancelGeneration() {
@@ -1235,16 +1309,69 @@
 
         async function toggleRecording() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
+                // Check if mediaDevices API is available (requires secure context)
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    if (!isLocalhost && window.location.protocol !== 'https:') {
+                        showError('Microphone access requires HTTPS. Please access this page via localhost or HTTPS.');
+                    } else {
+                        showError('Your browser does not support audio recording.');
+                    }
+                    return;
+                }
+
+                // Use more flexible audio constraints for better browser compatibility
+                const audioConstraints = {
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                };
+
+                let stream;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+                } catch (constraintError) {
+                    // If constraints fail, try with simple audio: true
+                    console.warn('Detailed constraints failed, trying simple constraints:', constraintError);
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                }
+                
+                // Determine the best supported MIME type for recording
+                // Firefox prefers ogg, Chrome/Safari prefer webm
+                let mimeType = '';
+                const mimeTypes = [
+                    'audio/ogg;codecs=opus',  // Firefox preferred
+                    'audio/webm;codecs=opus', // Chrome preferred
+                    'audio/ogg',
+                    'audio/webm',
+                    'audio/mp4',
+                    'audio/mpeg'
+                ];
+                
+                for (const type of mimeTypes) {
+                    if (MediaRecorder.isTypeSupported(type)) {
+                        mimeType = type;
+                        break;
+                    }
+                }
+                
+                // Create MediaRecorder with or without mimeType option
+                const options = mimeType ? { mimeType } : {};
+                mediaRecorder = new MediaRecorder(stream, options);
                 audioChunks = [];
 
                 mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
                 };
 
                 mediaRecorder.onstop = () => {
-                    recordedBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    // Use the actual MIME type from the MediaRecorder
+                    const actualMimeType = mediaRecorder.mimeType || mimeType || 'audio/ogg';
+                    recordedBlob = new Blob(audioChunks, { type: actualMimeType });
                     const audioUrl = URL.createObjectURL(recordedBlob);
                     const recordedAudio = document.getElementById('recorded-audio');
                     recordedAudio.src = audioUrl;
@@ -1259,7 +1386,26 @@
                 
             } catch (error) {
                 console.error('Error accessing microphone:', error);
-                showError('Could not access microphone. Please check permissions.');
+                console.error('Error name:', error.name);
+                console.error('Error message:', error.message);
+                
+                // Provide more specific error messages
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    showError('Microphone permission denied. Please allow microphone access in your browser settings and reload the page.');
+                } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                    // Additional help for Firefox on macOS
+                    showError('No microphone found. On macOS, please check: System Preferences > Security & Privacy > Privacy > Microphone, and ensure Firefox is allowed.');
+                } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                    showError('Microphone is in use by another application. Please close other apps using the microphone.');
+                } else if (error.name === 'OverconstrainedError') {
+                    showError('Could not satisfy audio constraints. Please try a different microphone.');
+                } else if (error.name === 'SecurityError') {
+                    showError('Microphone access blocked due to security policy. Please use HTTPS or localhost.');
+                } else if (error.name === 'AbortError') {
+                    showError('Microphone access was aborted. Please try again.');
+                } else {
+                    showError(`Could not access microphone: ${error.message || error.name || 'Unknown error'}. Check browser console for details.`);
+                }
             }
         }
 
