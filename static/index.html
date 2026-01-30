@@ -771,12 +771,14 @@
                 <div class="progress-fill" id="progress-fill"></div>
             </div>
             <p id="progress-text">Initializing voice cloner...</p>
+            <p id="elapsed-time" style="font-weight: 600; color: var(--accent); margin-top: 12px;">Elapsed: 0s</p>
             <button id="cancel-btn" class="btn" onclick="cancelGeneration()" style="background: #dc3545; margin-top: 15px;">Cancel Generation</button>
         </div>
 
         <!-- Result Section -->
         <div id="result-section" class="card hidden">
             <h3>Voice Cloning Complete!</h3>
+            <p id="result-generation-time" class="generated-audio-meta" style="margin-bottom: 16px;"></p>
             <audio controls class="audio-player" id="result-audio">
                 Your browser does not support the audio element.
             </audio>
@@ -819,6 +821,8 @@
         let selectedReferenceId = null;
         let currentTaskId = null;
         let progressInterval = null;
+        let elapsedTimeInterval = null;
+        let generationStartTime = null;
         let mediaRecorder = null;
         let audioChunks = [];
         let recordedBlob = null;
@@ -1002,9 +1006,12 @@
                     
                     const infoDiv = document.createElement('div');
                     infoDiv.className = 'generated-audio-meta';
+                    const generationTimeText = audio.generation_time_seconds 
+                        ? `<br>Generation time: ${audio.generation_time_seconds}s` 
+                        : '';
                     infoDiv.innerHTML = `
                         Reference: ${audio.ref_audio_name}<br>
-                        Created: ${new Date(parseFloat(audio.created_at) * 1000).toLocaleString()}
+                        Created: ${new Date(parseFloat(audio.created_at) * 1000).toLocaleString()}${generationTimeText}
                     `;
                     
                     const controlsDiv = document.createElement('div');
@@ -1224,6 +1231,9 @@
             const progressSection = document.getElementById('progress-section');
             progressSection.classList.remove('hidden');
             
+            // Start elapsed time counter
+            startElapsedTimeCounter();
+            
             try {
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -1245,6 +1255,7 @@
             } catch (error) {
                 console.error('Error starting cloning:', error);
                 showError(error.message);
+                stopElapsedTimeCounter();
             }
         }
 
@@ -1262,10 +1273,12 @@
                     
                     if (task.status === 'completed') {
                         clearInterval(progressInterval);
-                        showResult(task.output_path);
+                        stopElapsedTimeCounter();
+                        showResult(task.output_path, task.generation_time_seconds);
                         loadGeneratedAudios(); // Refresh the generated audios list
                     } else if (task.status === 'failed') {
                         clearInterval(progressInterval);
+                        stopElapsedTimeCounter();
                         hideAllSections();
                         showError(task.error || 'Cloning failed');
                     }
@@ -1273,6 +1286,29 @@
                     console.error('Error polling task status:', error);
                 }
             }, 1000);
+        }
+
+        function startElapsedTimeCounter() {
+            // Reset and start
+            generationStartTime = Date.now();
+            const elapsedTimeDisplay = document.getElementById('elapsed-time');
+            elapsedTimeDisplay.textContent = 'Elapsed: 0s';
+            
+            if (elapsedTimeInterval) {
+                clearInterval(elapsedTimeInterval);
+            }
+            
+            elapsedTimeInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - generationStartTime) / 1000);
+                elapsedTimeDisplay.textContent = `Elapsed: ${elapsed}s`;
+            }, 1000);
+        }
+
+        function stopElapsedTimeCounter() {
+            if (elapsedTimeInterval) {
+                clearInterval(elapsedTimeInterval);
+                elapsedTimeInterval = null;
+            }
         }
 
         function updateProgress(task) {
@@ -1295,21 +1331,31 @@
             } else if (task.status === 'cancelled') {
                 progressText.textContent = 'Generation cancelled';
                 clearInterval(progressInterval);
+                stopElapsedTimeCounter();
                 hideAllSections();
                 document.getElementById('error-section').classList.remove('hidden');
                 document.getElementById('error-message').textContent = 'Generation was cancelled';
             }
         }
 
-        function showResult(outputPath) {
+        function showResult(outputPath, generationTimeSeconds) {
             hideAllSections();
             
             const resultSection = document.getElementById('result-section');
             const resultAudio = document.getElementById('result-audio');
             const downloadLink = document.getElementById('download-link');
+            const generationTimeDisplay = document.getElementById('result-generation-time');
             
             resultAudio.src = `/tasks/${currentTaskId}/audio`;
             downloadLink.href = `/tasks/${currentTaskId}/audio`;
+            
+            // Display generation time
+            if (generationTimeSeconds) {
+                generationTimeDisplay.textContent = `Generated in ${generationTimeSeconds} seconds`;
+                generationTimeDisplay.style.display = 'block';
+            } else {
+                generationTimeDisplay.style.display = 'none';
+            }
             
             resultSection.classList.remove('hidden');
             
@@ -1359,6 +1405,7 @@
                 
                 // Always stop the animation and hide progress section when cancel is clicked
                 clearInterval(progressInterval);
+                stopElapsedTimeCounter();
                 hideAllSections();
                 
                 if (response.ok) {
@@ -1374,6 +1421,7 @@
             } catch (error) {
                 // Even on network error, stop the animation
                 clearInterval(progressInterval);
+                stopElapsedTimeCounter();
                 hideAllSections();
                 console.error('Error cancelling task:', error);
                 showError('Failed to cancel generation');

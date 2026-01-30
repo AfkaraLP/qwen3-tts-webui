@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, List, Union
 import logging
 import tempfile
+import time
 
 from voice_cloner import VoiceCloner
 
@@ -124,6 +125,7 @@ class GeneratedAudio(BaseModel):
     ref_audio_name: str
     generated_text: str
     created_at: str
+    generation_time_seconds: Optional[float] = None
 
 
 # In-memory task tracking
@@ -929,6 +931,9 @@ def process_cloning_task(
         if not voice_cloner:
             raise Exception("Voice cloner not initialized")
 
+        # Start timing
+        start_time = time.time()
+
         # Check if task was cancelled
         if task_id in cancelled_tasks:
             tasks[task_id]["status"] = "cancelled"
@@ -971,10 +976,18 @@ def process_cloning_task(
 
         tasks[task_id]["progress"] = 90
 
+        # Calculate generation time
+        generation_time = time.time() - start_time
+
         # Update task status
         tasks[task_id]["status"] = "completed"
         tasks[task_id]["progress"] = 100
         tasks[task_id]["output_path"] = str(output_path)
+        tasks[task_id]["generation_time_seconds"] = round(generation_time, 2)
+
+        logger.info(
+            f"Audio generation completed in {generation_time:.2f} seconds for task {task_id}"
+        )
 
         # Save to generated metadata
         generated_metadata = load_generated_metadata()
@@ -995,6 +1008,7 @@ def process_cloning_task(
             "ref_audio_name": ref_audio_name,
             "generated_text": text,
             "created_at": str(Path(output_path).stat().st_ctime),
+            "generation_time_seconds": round(generation_time, 2),
         }
         save_generated_metadata(generated_metadata)
 
@@ -1019,6 +1033,9 @@ def process_multi_speaker_cloning_task(
         global voice_cloner
         if not voice_cloner:
             raise Exception("Voice cloner not initialized")
+
+        # Start timing
+        start_time = time.time()
 
         # Check if task was cancelled
         if task_id in cancelled_tasks:
@@ -1088,10 +1105,18 @@ def process_multi_speaker_cloning_task(
 
         tasks[task_id]["progress"] = 95
 
+        # Calculate generation time
+        generation_time = time.time() - start_time
+
         # Update task status
         tasks[task_id]["status"] = "completed"
         tasks[task_id]["progress"] = 100
         tasks[task_id]["output_path"] = str(output_path)
+        tasks[task_id]["generation_time_seconds"] = round(generation_time, 2)
+
+        logger.info(
+            f"Multi-speaker audio generation completed in {generation_time:.2f} seconds for task {task_id}"
+        )
 
         # Save to generated metadata
         generated_metadata = load_generated_metadata()
@@ -1109,6 +1134,7 @@ def process_multi_speaker_cloning_task(
             "created_at": str(Path(output_path).stat().st_ctime),
             "is_multi_speaker": True,
             "segment_count": total_segments,
+            "generation_time_seconds": round(generation_time, 2),
         }
         save_generated_metadata(generated_metadata)
 
@@ -1193,6 +1219,7 @@ async def get_generated_audios():
                     ref_audio_name=data.get("ref_audio_name", "Unknown"),
                     generated_text=data.get("generated_text", ""),
                     created_at=data.get("created_at", str(file_path.stat().st_ctime)),
+                    generation_time_seconds=data.get("generation_time_seconds"),
                 )
             )
 
