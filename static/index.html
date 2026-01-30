@@ -683,11 +683,6 @@
                     </select>
                 </div>
 
-                <div class="form-group">
-                    <label for="ref-text-override">Reference Text (optional - override stored transcription):</label>
-                    <input type="text" id="ref-text-override" placeholder="Leave empty to use stored transcription">
-                </div>
-
                 <button class="btn" onclick="cloneWithExistingReference()">Clone Voice</button>
             </div>
 
@@ -733,11 +728,6 @@
                         <label for="youtube-name">Reference Name (optional):</label>
                         <input type="text" id="youtube-name" placeholder="Enter a name for this reference audio...">
                     </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="ref-text">Reference Text (optional - will auto-transcribe if empty):</label>
-                    <input type="text" id="ref-text" placeholder="Leave empty for automatic transcription">
                 </div>
 
                 <div class="form-group">
@@ -1155,7 +1145,6 @@
             }
             
             const text = document.getElementById('text-existing').value;
-            const refTextOverride = document.getElementById('ref-text-override').value;
             const language = document.getElementById('language-existing').value;
             
             if (!text.trim()) {
@@ -1166,14 +1155,12 @@
             await performCloning('/clone', {
                 text: text,
                 ref_audio_id: selectedReferenceId,
-                ref_text: refTextOverride || undefined,
                 language: language
             });
         }
 
         async function cloneWithUpload() {
             const text = document.getElementById('text-upload').value;
-            const refText = document.getElementById('ref-text').value;
             const language = document.getElementById('language-upload').value;
             
             if (!text.trim()) {
@@ -1193,7 +1180,6 @@
                 await performCloning('/clone-with-youtube', {
                     youtube_url: youtubeUrl,
                     text: text,
-                    ref_text: refText || undefined,
                     language: language,
                     name: youtubeName || undefined
                 });
@@ -1231,9 +1217,6 @@
                 formData.append('file', file);
                 formData.append('text', text);
                 formData.append('language', language);
-                if (refText.trim()) {
-                    formData.append('ref_text', refText);
-                }
                 
                 await performCloning('/clone-with-upload', formData, true);
             }
@@ -1562,10 +1545,6 @@
                     <label for="segment-${segmentId}-text">Text to Generate:</label>
                     <textarea id="segment-${segmentId}-text" class="segment-text" placeholder="Enter the text for this speaker..." rows="2"></textarea>
                 </div>
-                <div class="form-group">
-                    <label for="segment-${segmentId}-reftext">Reference Text (optional - override stored transcription):</label>
-                    <input type="text" id="segment-${segmentId}-reftext" class="segment-reftext" placeholder="Leave empty to use stored transcription">
-                </div>
             `;
             
             container.appendChild(segmentDiv);
@@ -1638,13 +1617,11 @@
                 const speakerSelect = element.querySelector('.segment-speaker-select');
                 const languageSelect = element.querySelector('.segment-language-select');
                 const textArea = element.querySelector('.segment-text');
-                const refTextInput = element.querySelector('.segment-reftext');
                 
                 segments.push({
                     text: textArea ? textArea.value : '',
                     ref_audio_id: speakerSelect ? speakerSelect.value : '',
-                    language: languageSelect ? languageSelect.value : 'auto',
-                    ref_text: refTextInput && refTextInput.value.trim() ? refTextInput.value.trim() : undefined
+                    language: languageSelect ? languageSelect.value : 'auto'
                 });
             });
             
@@ -1671,15 +1648,7 @@
                 }
             }
             
-            // Remove undefined ref_text values (send null instead)
-            const cleanedSegments = segments.map(seg => ({
-                text: seg.text,
-                ref_audio_id: seg.ref_audio_id,
-                language: seg.language,
-                ref_text: seg.ref_text || null
-            }));
-            
-            await performCloning('/clone-multi-speaker', { segments: cleanedSegments });
+            await performCloning('/clone-multi-speaker', { segments: segments });
         }
 
         // Update progress display for multi-speaker tasks
