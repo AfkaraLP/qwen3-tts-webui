@@ -73,6 +73,21 @@ class CloneRequest(BaseModel):
     language: str = "auto"
 
 
+class SpeakerSegment(BaseModel):
+    """A single speaker segment for multi-speaker generation"""
+
+    text: str
+    ref_audio_id: str
+    ref_text: Optional[str] = None
+    language: str = "auto"
+
+
+class MultiSpeakerCloneRequest(BaseModel):
+    """Request for multi-speaker sequential generation"""
+
+    segments: List[SpeakerSegment]
+
+
 class YouTubeCloneRequest(BaseModel):
     text: str
     youtube_url: str
@@ -773,6 +788,90 @@ async def clone_voice_with_upload(
     )
 
 
+@app.post("/clone-multi-speaker", response_model=CloneResponse)
+async def clone_voice_multi_speaker(
+    background_tasks: BackgroundTasks, request: MultiSpeakerCloneRequest
+):
+    """Clone voice with multiple speakers in sequence, concatenating the results."""
+    if not voice_cloner:
+        raise HTTPException(status_code=503, detail="Voice cloner not initialized")
+
+    # Validate request
+    if not request.segments or len(request.segments) == 0:
+        raise HTTPException(status_code=400, detail="At least one segment is required")
+
+    # Validate and prepare all segments
+    metadata = load_reference_metadata()
+    prepared_segments = []
+
+    for i, segment in enumerate(request.segments):
+        if not segment.ref_audio_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Segment {i + 1}: Reference audio ID is required",
+            )
+
+        if segment.ref_audio_id not in metadata:
+            raise HTTPException(
+                status_code=404, detail=f"Segment {i + 1}: Reference audio not found"
+            )
+
+        ref_data = metadata[segment.ref_audio_id]
+        ref_audio_path = REFERENCE_DIR / ref_data["filename"]
+
+        if not ref_audio_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Segment {i + 1}: Reference audio file not found",
+            )
+
+        # Use provided ref_text or stored one
+        ref_text = segment.ref_text or ref_data.get("ref_text")
+        if not ref_text:
+            raise HTTPException(
+                status_code=400, detail=f"Segment {i + 1}: Reference text is required"
+            )
+
+        if not segment.text.strip():
+            raise HTTPException(
+                status_code=400, detail=f"Segment {i + 1}: Text to generate is required"
+            )
+
+        prepared_segments.append(
+            {
+                "text": segment.text,
+                "ref_audio_path": str(ref_audio_path),
+                "ref_text": ref_text,
+                "language": segment.language,
+            }
+        )
+
+    # Generate task ID
+    task_id = str(uuid.uuid4())
+
+    # Start background task
+    background_tasks.add_task(
+        process_multi_speaker_cloning_task,
+        task_id,
+        prepared_segments,
+    )
+
+    tasks[task_id] = {
+        "status": "processing",
+        "progress": 0,
+        "ref_audio_id": "multi-speaker",
+        "is_multi_speaker": True,
+        "total_segments": len(prepared_segments),
+        "current_segment": 0,
+    }
+
+    return CloneResponse(
+        task_id=task_id,
+        status="processing",
+        message=f"Multi-speaker voice cloning started with {len(prepared_segments)} segments",
+    )
+
+
 def process_cloning_task(
     task_id: str, text: str, ref_audio_path: str, ref_text: str, language: str
 ):
@@ -854,6 +953,123 @@ def process_cloning_task(
         logger.error(f"Cloning task {task_id} failed: {e}")
         tasks[task_id]["status"] = "failed"
         tasks[task_id]["error"] = str(e)
+
+
+def process_multi_speaker_cloning_task(
+    task_id: str,
+    segments: List[dict],
+):
+    """Process multi-speaker voice cloning task.
+
+    Args:
+        task_id: Unique task identifier
+        segments: List of dicts with keys: text, ref_audio_path, ref_text, language
+    """
+    temp_audio_paths: List[str] = []
+    try:
+        global voice_cloner
+        if not voice_cloner:
+            raise Exception("Voice cloner not initialized")
+
+        # Check if task was cancelled
+        if task_id in cancelled_tasks:
+            tasks[task_id]["status"] = "cancelled"
+            return
+
+        tasks[task_id]["status"] = "processing"
+        tasks[task_id]["progress"] = 5
+
+        total_segments = len(segments)
+
+        # Process each segment
+        for i, segment in enumerate(segments):
+            # Check if task was cancelled
+            if task_id in cancelled_tasks:
+                tasks[task_id]["status"] = "cancelled"
+                # Clean up temp files
+                for temp_path in temp_audio_paths:
+                    safe_delete_file(temp_path)
+                return
+
+            # Update progress (distribute 5-90% across segments)
+            segment_progress = 5 + int((85 * i) / total_segments)
+            tasks[task_id]["progress"] = segment_progress
+            tasks[task_id]["current_segment"] = i + 1
+            tasks[task_id]["total_segments"] = total_segments
+
+            # Generate audio for this segment
+            temp_output_path = OUTPUT_DIR / f"temp_{task_id}_segment_{i}.wav"
+
+            sr, result_path = voice_cloner.clone_voice(
+                text=segment["text"],
+                ref_audio=segment["ref_audio_path"],
+                ref_text=segment["ref_text"],
+                language=segment["language"],
+                output_path=str(temp_output_path),
+            )
+
+            temp_audio_paths.append(str(temp_output_path))
+
+        # Check if task was cancelled before concatenation
+        if task_id in cancelled_tasks:
+            tasks[task_id]["status"] = "cancelled"
+            for temp_path in temp_audio_paths:
+                safe_delete_file(temp_path)
+            return
+
+        tasks[task_id]["progress"] = 90
+
+        # Concatenate all audio segments
+        output_filename = f"cloned_{task_id}.wav"
+        output_path = OUTPUT_DIR / output_filename
+
+        from voice_cloner import VoiceCloner as VC
+
+        VC.concatenate_audios(temp_audio_paths, str(output_path))
+
+        # Clean up temp files
+        for temp_path in temp_audio_paths:
+            safe_delete_file(temp_path)
+
+        # Check if task was cancelled after concatenation
+        if task_id in cancelled_tasks:
+            tasks[task_id]["status"] = "cancelled"
+            safe_delete_file(output_path)
+            return
+
+        tasks[task_id]["progress"] = 95
+
+        # Update task status
+        tasks[task_id]["status"] = "completed"
+        tasks[task_id]["progress"] = 100
+        tasks[task_id]["output_path"] = str(output_path)
+
+        # Save to generated metadata
+        generated_metadata = load_generated_metadata()
+
+        # Create combined text summary for metadata
+        combined_text = " | ".join([seg["text"][:50] for seg in segments])
+        if len(combined_text) > 200:
+            combined_text = combined_text[:197] + "..."
+
+        generated_metadata[task_id] = {
+            "filename": output_filename,
+            "ref_audio_id": "multi-speaker",
+            "ref_audio_name": f"Multi-Speaker ({total_segments} segments)",
+            "generated_text": combined_text,
+            "created_at": str(Path(output_path).stat().st_ctime),
+            "is_multi_speaker": True,
+            "segment_count": total_segments,
+        }
+        save_generated_metadata(generated_metadata)
+
+    except Exception as e:
+        logger.error(f"Multi-speaker cloning task {task_id} failed: {e}")
+        tasks[task_id]["status"] = "failed"
+        tasks[task_id]["error"] = str(e)
+        # Clean up any temp files on error
+        for temp_path in temp_audio_paths:
+            safe_delete_file(temp_path)
 
 
 @app.post("/tasks/{task_id}/cancel")

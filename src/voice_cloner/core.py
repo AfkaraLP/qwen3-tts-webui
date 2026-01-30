@@ -1,9 +1,10 @@
 import torch
 import soundfile as sf
 import whisper
+import numpy as np
 from qwen_tts import Qwen3TTSModel
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 
 def get_default_device() -> str:
@@ -256,3 +257,62 @@ class VoiceCloner:
                 )
         except Exception as e:
             raise ValueError(f"Invalid audio file {audio_path}: {str(e)}")
+
+    @staticmethod
+    def concatenate_audios(
+        audio_paths: List[str],
+        output_path: str,
+        silence_duration_ms: int = 200,
+    ) -> Tuple[int, str]:
+        """
+        Concatenate multiple audio files into a single file with optional silence between them.
+
+        Args:
+            audio_paths: List of paths to audio files to concatenate
+            output_path: Path to save the concatenated audio
+            silence_duration_ms: Duration of silence between audio segments in milliseconds
+
+        Returns:
+            Tuple of (sample_rate, output_path)
+        """
+        if not audio_paths:
+            raise ValueError("No audio paths provided for concatenation")
+
+        # Read all audio files
+        audio_segments = []
+        sample_rates = []
+
+        for audio_path in audio_paths:
+            data, sr = sf.read(audio_path)
+            audio_segments.append(data)
+            sample_rates.append(sr)
+
+        # Ensure all sample rates are the same (use the first one as reference)
+        target_sr = sample_rates[0]
+        for i, (segment, sr) in enumerate(zip(audio_segments, sample_rates)):
+            if sr != target_sr:
+                # Resample using simple linear interpolation
+                # For production, consider using librosa or scipy for better resampling
+                ratio = target_sr / sr
+                new_length = int(len(segment) * ratio)
+                indices = np.linspace(0, len(segment) - 1, new_length)
+                segment = np.interp(indices, np.arange(len(segment)), segment)
+                audio_segments[i] = segment
+
+        # Create silence array
+        silence_samples = int(target_sr * silence_duration_ms / 1000)
+        silence = np.zeros(silence_samples)
+
+        # Concatenate with silence between segments
+        concatenated = []
+        for i, segment in enumerate(audio_segments):
+            concatenated.append(segment)
+            if i < len(audio_segments) - 1:  # Don't add silence after the last segment
+                concatenated.append(silence)
+
+        final_audio = np.concatenate(concatenated)
+
+        # Write the concatenated audio
+        sf.write(output_path, final_audio, target_sr)
+
+        return target_sr, output_path
