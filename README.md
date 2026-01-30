@@ -35,7 +35,7 @@ Generate speech using AI with Qwen TTS - upload a reference audio and create new
 ```bash
 # Clone the repository
 git clone https://github.com/AfkaraLP/qwen3-tts-webui.git
-cd qwentts
+cd qwen3-tts-webui
 
 # Enter development environment
 nix develop
@@ -54,7 +54,7 @@ uv run start_server.py
 ```bash
 # Clone the repository
 git clone https://github.com/AfkaraLP/qwen3-tts-webui.git
-cd qwentts
+cd qwen3-tts-webui
 
 # Install dependencies
 uv sync
