@@ -868,6 +868,32 @@ async def get_generated_audios():
     return generated_audios
 
 
+@app.delete("/generated/{audio_id}")
+async def delete_generated_audio(audio_id: str):
+    """Delete a generated audio file and its metadata."""
+    metadata = load_generated_metadata()
+
+    if audio_id not in metadata:
+        raise HTTPException(status_code=404, detail="Generated audio not found")
+
+    # Get the filename and delete the file
+    filename = metadata[audio_id].get("filename")
+    if filename:
+        file_path = OUTPUT_DIR / filename
+        if file_path.exists():
+            file_path.unlink()
+
+    # Remove from metadata
+    del metadata[audio_id]
+    save_generated_metadata(metadata)
+
+    # Also remove from tasks if present
+    if audio_id in tasks:
+        del tasks[audio_id]
+
+    return {"message": "Generated audio deleted successfully"}
+
+
 if __name__ == "__main__":
     import uvicorn
     import os
