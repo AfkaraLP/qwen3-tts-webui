@@ -11,12 +11,26 @@
             --primary: #000000;
             --secondary: #ffffff;
             --accent: #ff6b35;
-            --surface: #f0f0f0;
-            --border: #e2e8f0;
+            --accent-hover: #ff8c5a;
+            --surface: #f5f5f5;
+            --border: #000000;
             --text-primary: #000000;
-            --text-secondary: #6b7280;
-            --shadow: rgba(0, 0, 0, 0.1);
+            --text-secondary: #555555;
+            --shadow: rgba(0, 0, 0, 0.9);
+            --shadow-offset: 4px;
             --radius: 0px;
+        }
+
+        [data-theme="dark"] {
+            --primary: #ffffff;
+            --secondary: #1a1a1a;
+            --accent: #ff6b35;
+            --accent-hover: #ff8c5a;
+            --surface: #0d0d0d;
+            --border: #ffffff;
+            --text-primary: #ffffff;
+            --text-secondary: #aaaaaa;
+            --shadow: rgba(255, 255, 255, 0.3);
         }
 
         * {
@@ -32,11 +46,42 @@
             min-height: 100vh;
             padding: 24px;
             line-height: 1.6;
+            transition: background 0.3s ease, color 0.3s ease;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .theme-toggle button {
+            background: var(--secondary);
+            color: var(--text-primary);
+            border: 3px solid var(--border);
+            padding: 12px 16px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 700;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
+            transition: all 0.1s ease;
+        }
+
+        .theme-toggle button:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0 var(--shadow);
+        }
+
+        .theme-toggle button:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 var(--shadow);
         }
 
         .header {
@@ -55,31 +100,35 @@
             width: 48px;
             height: 48px;
             background: var(--primary);
-            border: 2px solid var(--border);
+            border: 3px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
             font-size: 18px;
             color: var(--secondary);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
         }
 
         .header h1 {
             font-size: 2.5rem;
-            font-weight: 700;
+            font-weight: 900;
             margin-bottom: 8px;
             letter-spacing: -0.025em;
+            text-transform: uppercase;
         }
 
         .header p {
             font-size: 1.125rem;
             color: var(--text-secondary);
+            font-weight: 500;
         }
 
         .tabs-container {
             background: var(--secondary);
-            border: 1px solid var(--border);
+            border: 3px solid var(--border);
             margin-bottom: 24px;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
         }
 
         .tabs {
@@ -89,19 +138,22 @@
         .tab {
             padding: 16px 32px;
             cursor: pointer;
-            transition: all 0.2s ease;
-            font-weight: 500;
-            border-bottom: 2px solid transparent;
+            transition: all 0.1s ease;
+            font-weight: 700;
+            border-bottom: 4px solid transparent;
             position: relative;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .tab.active {
-            color: var(--accent);
-            border-bottom-color: var(--accent);
+            color: var(--secondary);
+            background: var(--accent);
+            border-bottom-color: var(--primary);
         }
 
         .tab:hover:not(.active) {
-            color: var(--text-primary);
+            background: var(--surface);
         }
 
         .tab-content {
@@ -114,10 +166,18 @@
 
         .card {
             background: var(--secondary);
-            border: 1px solid var(--border);
+            border: 3px solid var(--border);
             padding: 32px;
             margin-bottom: 24px;
-            box-shadow: 0 1px 3px var(--shadow);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
+            transition: all 0.2s ease;
+        }
+
+        .card h3 {
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 16px;
         }
 
         .form-group {
@@ -127,26 +187,36 @@
         label {
             display: block;
             margin-bottom: 8px;
-            font-weight: 500;
+            font-weight: 700;
             color: var(--text-primary);
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 0.5px;
         }
 
         input, textarea, select {
             width: 100%;
             padding: 12px 16px;
-            border: 1px solid var(--border);
+            border: 3px solid var(--border);
             border-radius: var(--radius);
             font-size: 16px;
             font-family: inherit;
             background: var(--surface);
             color: var(--text-primary);
-            transition: all 0.2s ease;
+            transition: all 0.1s ease;
+            font-weight: 500;
         }
 
         input:focus, textarea:focus, select:focus {
             outline: none;
             border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+            box-shadow: 4px 4px 0 var(--accent);
+            transform: translate(-2px, -2px);
+        }
+
+        input::placeholder, textarea::placeholder {
+            color: var(--text-secondary);
+            font-weight: 400;
         }
 
         textarea {
@@ -154,10 +224,37 @@
             resize: vertical;
         }
 
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+            padding-right: 44px;
+        }
+
+        [data-theme="dark"] select {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+        }
+
+        .input-with-button {
+            display: flex;
+            gap: 12px;
+        }
+
+        .input-with-button input {
+            flex: 1;
+        }
+
+        .input-with-button .btn {
+            flex-shrink: 0;
+        }
+
         .audio-upload-tabs {
             display: flex;
             background: var(--surface);
-            border: 1px solid var(--border);
+            border: 3px solid var(--border);
             margin-bottom: 24px;
         }
 
@@ -166,7 +263,7 @@
             flex: 1;
             text-align: center;
             border-bottom: none;
-            border-right: 1px solid var(--border);
+            border-right: 3px solid var(--border);
         }
 
         .audio-upload-tabs .tab:last-child {
@@ -181,46 +278,57 @@
         .btn {
             background: var(--primary);
             color: var(--secondary);
-            border: 1px solid var(--border);
+            border: 3px solid var(--border);
             padding: 14px 28px;
             border-radius: var(--radius);
             cursor: pointer;
             font-size: 16px;
-            font-weight: 500;
-            transition: all 0.2s ease;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.1s ease;
             display: inline-flex;
             align-items: center;
             gap: 8px;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
         }
 
         .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px var(--shadow);
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0 var(--shadow);
         }
 
         .btn:active {
-            transform: translateY(0);
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 var(--shadow);
         }
 
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
         }
 
         .btn-danger {
             background: #dc3545;
             color: white;
+            border-color: #000000;
+        }
+
+        [data-theme="dark"] .btn-danger {
+            border-color: #ffffff;
         }
 
         .btn-danger:hover {
-            background: #c82333;
+            background: #ff4d5e;
         }
 
         .progress-bar {
             width: 100%;
-            height: 8px;
-            background: var(--border);
-            border-radius: var(--radius);
+            height: 12px;
+            background: var(--surface);
+            border: 3px solid var(--border);
             overflow: hidden;
             margin: 16px 0;
         }
@@ -245,10 +353,19 @@
         .error {
             background: #fee2e2;
             color: #991b1b;
-            border: 1px solid #fecaca;
+            border: 3px solid #991b1b;
             padding: 16px;
             border-radius: var(--radius);
             margin: 16px 0;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 #991b1b;
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .error {
+            background: #3d1515;
+            color: #ff8a8a;
+            border-color: #ff8a8a;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 rgba(255, 138, 138, 0.3);
         }
 
         .result-audio {
@@ -259,20 +376,21 @@
 
         .generated-audio-item {
             background: var(--secondary);
-            border: 1px solid var(--border);
+            border: 3px solid var(--border);
             padding: 24px;
             margin-bottom: 16px;
             border-radius: var(--radius);
-            transition: all 0.2s ease;
+            transition: all 0.1s ease;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
         }
 
         .generated-audio-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px var(--shadow);
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0 var(--shadow);
         }
 
         .generated-audio-title {
-            font-weight: 600;
+            font-weight: 700;
             margin-bottom: 8px;
             color: var(--text-primary);
         }
@@ -281,6 +399,7 @@
             font-size: 14px;
             color: var(--text-secondary);
             margin-bottom: 12px;
+            font-weight: 500;
         }
 
         .generated-audio-controls {
@@ -296,6 +415,45 @@
 
         .generated-audio-controls .btn {
             flex-shrink: 0;
+        }
+
+        /* Recording section neobrutalist style */
+        .recording-area {
+            text-align: center;
+            padding: 24px;
+            border: 3px dashed var(--border);
+            margin-bottom: 15px;
+            background: var(--surface);
+        }
+
+        /* Links section */
+        .links-section {
+            text-align: center;
+            margin-top: 48px;
+        }
+
+        .links-section a {
+            color: var(--text-primary);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: 3px solid var(--border);
+            background: var(--secondary);
+            transition: all 0.1s ease;
+            font-weight: 600;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
+        }
+
+        .links-section a:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0 var(--shadow);
+        }
+
+        .links-section a:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 var(--shadow);
         }
 
         @media (max-width: 768px) {
@@ -319,10 +477,30 @@
             .generated-audio-controls .btn {
                 justify-content: center;
             }
+
+            .theme-toggle {
+                position: static;
+                text-align: right;
+                margin-bottom: 16px;
+            }
+
+            .input-with-button {
+                flex-direction: column;
+            }
+
+            .input-with-button .btn {
+                width: 100%;
+                justify-content: center;
+            }
         }
     </style>
 </head>
 <body>
+    <div class="theme-toggle">
+        <button onclick="toggleTheme()" id="theme-btn" title="Toggle dark mode">
+            <span id="theme-icon">&#9790;</span>
+        </button>
+    </div>
     <div class="container">
         <div class="header">
             <div class="logo">
@@ -361,9 +539,9 @@
 
                 <div class="form-group" id="reference-rename" style="display: none;">
                     <label for="reference-name-input">Reference Name:</label>
-                    <div style="display: flex; gap: 10px;">
-                        <input type="text" id="reference-name-input" placeholder="Enter a custom name for this reference..." style="flex: 1; padding: 12px; border: 2px solid #4a4a4a; border-radius: 8px; font-size: 16px; background: #4a4a4a; color: #e0e0e0;">
-                        <button class="btn" onclick="renameReference()" style="padding: 12px 20px;">Rename</button>
+                    <div class="input-with-button">
+                        <input type="text" id="reference-name-input" placeholder="Enter a custom name for this reference...">
+                        <button class="btn" onclick="renameReference()">Rename</button>
                     </div>
                 </div>
 
@@ -410,10 +588,10 @@
                 <div id="record-source" class="tab-content">
                     <div class="form-group">
                         <label>Record Reference Audio:</label>
-                        <div style="text-align: center; padding: 20px; border: 2px dashed #4a4a4a; border-radius: 8px; margin-bottom: 15px;">
+                        <div class="recording-area">
                             <button id="record-btn" class="btn" onclick="toggleRecording()">Start Recording</button>
                             <button id="stop-btn" class="btn" onclick="stopRecording()" style="display: none; margin-left: 10px;">Stop Recording</button>
-                            <p id="recording-status" style="margin-top: 15px; color: #aaff00;"></p>
+                            <p id="recording-status" style="margin-top: 15px; color: var(--accent); font-weight: 600;"></p>
                         </div>
                         <audio id="recorded-audio" controls class="audio-player" style="display: none;"></audio>
                     </div>
@@ -488,15 +666,15 @@
         </div>
 
         <!-- Links Section -->
-        <div class="card" style="text-align: center; margin-top: 48px;">
+        <div class="card links-section">
             <h3 style="margin-bottom: 16px;">Support & More</h3>
             <div style="display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;">
-                <a href="https://github.com/AfkaraLP/qwen3-tts-webui" target="_blank" rel="noopener noreferrer" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; gap: 8px; padding: 12px 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--secondary); transition: all 0.2s ease;">
-                    <img src="/static/github-142-svgrepo-com.svg" alt="GitHub" width="20" height="20" style="fill: currentColor;">
+                <a href="https://github.com/AfkaraLP/qwen3-tts-webui" target="_blank" rel="noopener noreferrer">
+                    <img src="/static/github-142-svgrepo-com.svg" alt="GitHub" width="20" height="20">
                     View on GitHub
                 </a>
-                <a href="https://ko-fi.com/afkaralp" target="_blank" rel="noopener noreferrer" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; gap: 8px; padding: 12px 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--secondary); transition: all 0.2s ease;">
-                    <img src="/static/kofi-svgrepo-com.svg" alt="Ko-fi" width="20" height="20" style="fill: currentColor;">
+                <a href="https://ko-fi.com/afkaralp" target="_blank" rel="noopener noreferrer">
+                    <img src="/static/kofi-svgrepo-com.svg" alt="Ko-fi" width="20" height="20">
                     Support on Ko-fi
                 </a>
             </div>
@@ -512,6 +690,38 @@
         let recordedBlob = null;
         let currentAudioSource = 'file';
         let referencesData = {};
+
+        // Theme toggle functionality
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            const themeIcon = document.getElementById('theme-icon');
+            if (theme === 'dark') {
+                themeIcon.innerHTML = '&#9788;'; // Sun symbol
+            } else {
+                themeIcon.innerHTML = '&#9790;'; // Moon symbol
+            }
+        }
+
+        function initializeTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+            
+            document.documentElement.setAttribute('data-theme', theme);
+            updateThemeIcon(theme);
+        }
+
+        // Initialize theme immediately
+        initializeTheme();
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
