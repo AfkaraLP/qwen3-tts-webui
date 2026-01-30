@@ -7,6 +7,9 @@ Start the FastAPI server for voice cloning functionality
 import os
 import sys
 import argparse
+import threading
+import time
+import itertools
 from pathlib import Path
 
 # Add src to path
@@ -14,6 +17,72 @@ src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
 import uvicorn
+import urllib.request
+import urllib.error
+
+
+class LoadingSpinner:
+    """A terminal loading spinner that shows while the model is loading"""
+
+    def __init__(self, port: int):
+        self.port = port
+        self.spinning = True
+        self.spinner_chars = itertools.cycle(
+            ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        )
+        self.thread = None
+        self.model_loaded = False
+
+    def _check_health(self) -> bool:
+        """Check if the server is healthy and model is loaded"""
+        try:
+            url = f"http://localhost:{self.port}/health"
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=2) as response:
+                import json
+
+                data = json.loads(response.read().decode())
+                return data.get("voice_cloner_loaded", False)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, Exception):
+            return False
+
+    def _spin(self):
+        """Run the spinner animation"""
+        start_time = time.time()
+        while self.spinning:
+            elapsed = time.time() - start_time
+            mins, secs = divmod(int(elapsed), 60)
+            time_str = f"{mins:02d}:{secs:02d}"
+
+            char = next(self.spinner_chars)
+            status = f"\r{char} Loading model... ({time_str}) "
+            sys.stdout.write(status)
+            sys.stdout.flush()
+
+            # Check health every iteration
+            if self._check_health():
+                self.model_loaded = True
+                self.spinning = False
+                break
+
+            time.sleep(0.1)
+
+        # Clear the spinner line and print success message
+        if self.model_loaded:
+            sys.stdout.write("\r" + " " * 80 + "\r")  # Clear line
+            sys.stdout.write("✓ Model loaded successfully! Server is ready.\n")
+            sys.stdout.flush()
+
+    def start(self):
+        """Start the spinner in a background thread"""
+        self.thread = threading.Thread(target=self._spin, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        """Stop the spinner"""
+        self.spinning = False
+        if self.thread:
+            self.thread.join(timeout=1)
 
 
 def main():
@@ -49,15 +118,22 @@ def main():
     print(f"API Documentation: http://localhost:{args.port}/docs")
     print()
 
+    # Start the loading spinner in a background thread
+    spinner = LoadingSpinner(args.port)
+    spinner.start()
+
     # Start the server
-    uvicorn.run(
-        "voice_cloner.server:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-        workers=1 if args.reload else args.workers,
-        log_level="info",
-    )
+    try:
+        uvicorn.run(
+            "voice_cloner.server:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            workers=1 if args.reload else args.workers,
+            log_level="info",
+        )
+    finally:
+        spinner.stop()
 
 
 if __name__ == "__main__":
