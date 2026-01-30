@@ -309,18 +309,62 @@ def download_youtube_audio(youtube_url: str) -> str:
         raise Exception(f"Failed to download YouTube audio: {e}")
 
 
-def trim_audio_to_max_length(audio_path: str, max_duration: int = 60) -> str:
-    """Trim audio to maximum duration (in seconds)"""
+def trim_audio_to_max_length(
+    audio_path: str, max_duration: int = 60, silence_thresh_db: int = -40
+) -> str:
+    """Trim audio to maximum duration (in seconds) and remove trailing silence.
+
+    Args:
+        audio_path: Path to the audio file
+        max_duration: Maximum duration in seconds (default 60)
+        silence_thresh_db: Silence threshold in dB (default -40dB)
+    """
     try:
         from pydub import AudioSegment
 
         audio = AudioSegment.from_file(audio_path)
+        was_trimmed = False
+
+        # First, trim to max duration if needed
         if len(audio) > max_duration * 1000:  # Convert to milliseconds
             audio = audio[: max_duration * 1000]
+            was_trimmed = True
+
+        # Now remove trailing silence by looking backward from the end
+        # Find the last non-silent chunk
+        chunk_size_ms = 100  # Check in 100ms chunks
+        min_audio_length_ms = 5000  # Don't trim below 5 seconds
+
+        original_length = len(audio)
+        end_pos = original_length
+
+        # Scan backward to find where actual audio ends
+        while end_pos > min_audio_length_ms:
+            chunk_start = max(0, end_pos - chunk_size_ms)
+            chunk = audio[chunk_start:end_pos]
+
+            # Check if this chunk is silence (below threshold)
+            if chunk.dBFS > silence_thresh_db:
+                # Found audio content, stop here
+                break
+
+            end_pos -= chunk_size_ms
+
+        # If we found trailing silence, trim it (keep a small buffer of 200ms)
+        buffer_ms = 200
+        if end_pos < original_length - buffer_ms:
+            audio = audio[: end_pos + buffer_ms]
+            was_trimmed = True
+            logger.info(
+                f"Trimmed {original_length - end_pos - buffer_ms}ms of trailing silence from audio"
+            )
+
+        if was_trimmed:
             # Export trimmed audio
             trimmed_path = audio_path.replace(".wav", "_trimmed.wav")
             audio.export(trimmed_path, format="wav")
             return trimmed_path
+
         return audio_path
     except Exception as e:
         logger.warning(f"Failed to trim audio {audio_path}: {e}")
