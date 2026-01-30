@@ -7,6 +7,35 @@ from pathlib import Path
 from typing import Optional, Tuple, List
 
 
+def normalize_audio(audio: np.ndarray, target_db: float = -3.0) -> np.ndarray:
+    """
+    Normalize audio to a target peak level in dB.
+
+    Args:
+        audio: Input audio array
+        target_db: Target peak level in dB (default: -3.0 dB)
+
+    Returns:
+        Normalized audio array
+    """
+    # Handle empty or silent audio
+    if len(audio) == 0:
+        return audio
+
+    # Find the peak amplitude
+    peak = np.max(np.abs(audio))
+
+    if peak == 0:
+        return audio
+
+    # Calculate the gain needed to reach target dB
+    target_linear = 10 ** (target_db / 20)
+    gain = target_linear / peak
+
+    # Apply gain
+    return audio * gain
+
+
 def get_default_device() -> str:
     """Get the default device based on availability."""
     if torch.cuda.is_available():
@@ -99,7 +128,9 @@ class VoiceCloner:
         if output_path is None:
             output_path = "output_voice_clone.wav"
 
-        sf.write(output_path, wavs[0], sr)
+        # Normalize the audio before saving
+        normalized_audio = normalize_audio(wavs[0])
+        sf.write(output_path, normalized_audio, sr)
         return sr, output_path
 
     def clone_voice_from_file(
@@ -311,6 +342,9 @@ class VoiceCloner:
                 concatenated.append(silence)
 
         final_audio = np.concatenate(concatenated)
+
+        # Normalize the final concatenated audio
+        final_audio = normalize_audio(final_audio)
 
         # Write the concatenated audio
         sf.write(output_path, final_audio, target_sr)
