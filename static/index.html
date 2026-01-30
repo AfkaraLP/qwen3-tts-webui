@@ -1204,6 +1204,7 @@
                         loadGeneratedAudios(); // Refresh the generated audios list
                     } else if (task.status === 'failed') {
                         clearInterval(progressInterval);
+                        hideAllSections();
                         showError(task.error || 'Cloning failed');
                     }
                 } catch (error) {
@@ -1294,14 +1295,24 @@
                     headers: { 'Content-Type': 'application/json' }
                 });
                 
+                // Always stop the animation and hide progress section when cancel is clicked
+                clearInterval(progressInterval);
+                hideAllSections();
+                
                 if (response.ok) {
-                    clearInterval(progressInterval);
                     currentTaskId = null;
+                    showSuccess('Generation cancelled');
                 } else {
+                    // Task may have already completed or failed, still hide the progress
                     const error = await response.json();
-                    showError(`Failed to cancel: ${error.detail}`);
+                    currentTaskId = null;
+                    // Don't show error if task already finished - just a minor notification
+                    console.log('Cancel response:', error.detail);
                 }
             } catch (error) {
+                // Even on network error, stop the animation
+                clearInterval(progressInterval);
+                hideAllSections();
                 console.error('Error cancelling task:', error);
                 showError('Failed to cancel generation');
             }
