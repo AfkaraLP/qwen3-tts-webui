@@ -54,7 +54,7 @@ def clone(text, ref_audio, ref_text, output, language, device, force_transcribe)
             output_path=output,
         )
 
-        click.echo(f"Voice cloned successfully!")
+        click.echo("Voice cloned successfully!")
         click.echo(f"Output: {output_path}")
         click.echo(f"Sample rate: {sr} Hz")
 
@@ -113,7 +113,7 @@ def clone_from_file(
             language=language,
         )
 
-        click.echo(f"Voice cloned successfully!")
+        click.echo("Voice cloned successfully!")
         click.echo(f"Output: {output_path}")
 
     except Exception as e:
@@ -151,7 +151,7 @@ def transcribe(audio, output, device, model):
 
         transcript = cloner.transcribe_audio(audio_path=audio, output_path=output)
 
-        click.echo(f"Transcription:")
+        click.echo("Transcription:")
         click.echo(f"   {transcript}")
 
     except Exception as e:

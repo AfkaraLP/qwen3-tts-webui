@@ -1,7 +1,6 @@
 import torch
 import soundfile as sf
 import whisper
-import os
 from qwen_tts import Qwen3TTSModel
 from pathlib import Path
 from typing import Optional, Tuple
@@ -224,7 +223,7 @@ class VoiceCloner:
             with open(str(transcript_path), "r", encoding="utf-8") as f:
                 transcript = f.read().strip()
                 if not transcript:
-                    print(f"⚠️ Existing transcript file is empty, re-transcribing...")
+                    print("⚠️ Existing transcript file is empty, re-transcribing...")
                 else:
                     return transcript
 

@@ -11,7 +11,6 @@ import hashlib
 from pathlib import Path
 from typing import Optional, List, Union
 import logging
-import yt_dlp
 import tempfile
 
 from voice_cloner import VoiceCloner
@@ -192,8 +191,6 @@ def download_youtube_audio(youtube_url: str) -> str:
     try:
         # Use subprocess to call yt-dlp directly to avoid typing issues
         import subprocess
-
-        output_file = os.path.join(temp_dir, "audio.wav")
 
         cmd = [
             "yt-dlp",

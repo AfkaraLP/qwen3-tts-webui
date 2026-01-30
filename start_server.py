@@ -16,9 +16,9 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-import uvicorn
-import urllib.request
-import urllib.error
+import uvicorn  # noqa: E402
+import urllib.request  # noqa: E402
+import urllib.error  # noqa: E402
 
 
 class LoadingSpinner:
@@ -107,7 +107,7 @@ def main():
     project_dir = Path(__file__).parent
     os.chdir(project_dir)
 
-    print(f"Starting Qwen TTS WebUI Server")
+    print("Starting Qwen TTS WebUI Server")
     print(f"Host: {args.host}")
     print(f"Port: {args.port}")
     print(f"Auto-reload: {args.reload}")
