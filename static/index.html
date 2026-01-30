@@ -1042,10 +1042,6 @@
         }
 
         async function deleteGeneratedAudio(audioId) {
-            if (!confirm('Are you sure you want to delete this generated audio?')) {
-                return;
-            }
-            
             try {
                 const response = await fetch(`/generated/${audioId}`, {
                     method: 'DELETE'
