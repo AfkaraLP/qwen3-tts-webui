@@ -100,6 +100,12 @@ def main():
     parser.add_argument(
         "--workers", type=int, default=1, help="Number of worker processes"
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="Device backend to use (e.g., 'cuda:0', 'mps', 'cpu'). Auto-detected if not specified.",
+    )
 
     args = parser.parse_args()
 
@@ -107,11 +113,16 @@ def main():
     project_dir = Path(__file__).parent
     os.chdir(project_dir)
 
+    # Set device environment variable if specified
+    if args.device:
+        os.environ["VOICE_CLONER_DEVICE"] = args.device
+
     print("Starting Qwen TTS WebUI Server")
     print(f"Host: {args.host}")
     print(f"Port: {args.port}")
     print(f"Auto-reload: {args.reload}")
     print(f"Workers: {args.workers}")
+    print(f"Device: {args.device or 'auto-detect'}")
     print(f"Working directory: {project_dir}")
     print()
     print(f"Web UI will be available at: http://localhost:{args.port}")

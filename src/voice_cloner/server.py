@@ -203,10 +203,15 @@ def reindex_generated_audios():
 def initialize_voice_cloner():
     global voice_cloner
     if voice_cloner is None:
-        logger.info("Initializing VoiceCloner...")
+        # Get device from environment variable (set by start_server.py --device flag)
+        device = os.environ.get("VOICE_CLONER_DEVICE", None)
+        device_info = f" on device '{device}'" if device else " (auto-detecting device)"
+        logger.info(f"Initializing VoiceCloner{device_info}...")
         try:
-            voice_cloner = VoiceCloner()
-            logger.info("VoiceCloner initialized successfully")
+            voice_cloner = VoiceCloner(device=device)
+            logger.info(
+                f"VoiceCloner initialized successfully on {voice_cloner.device}"
+            )
         except Exception as e:
             logger.error(f"Failed to initialize VoiceCloner: {e}")
             raise
