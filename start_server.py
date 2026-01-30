@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Voice Cloner Server Launcher
+Web UI Server Launcher
 Start the FastAPI server for voice cloning functionality
 """
 
@@ -86,7 +86,7 @@ class LoadingSpinner:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Start the Voice Cloner HTTP server")
+    parser = argparse.ArgumentParser(description="Start the Web UI")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument(
         "--port",
@@ -136,7 +136,7 @@ def main():
     # Start the server
     try:
         uvicorn.run(
-            "voice_cloner.server:app",
+            "qwen_voice_cloning.server:app",
             host=args.host,
             port=args.port,
             reload=args.reload,

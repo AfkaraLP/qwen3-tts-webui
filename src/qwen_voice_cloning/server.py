@@ -14,7 +14,7 @@ import logging
 import tempfile
 import time
 
-from voice_cloner import VoiceCloner
+from qwen_voice_cloning import VoiceCloner
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

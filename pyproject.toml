@@ -3,10 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "voice-cloner"
+name = "qwen3-tts-webui"
 version = "0.1.0"
 description = "Easy voice cloning using Qwen TTS"
-authors = [{name = "Voice Cloner", email = "voice@cloner.com"}]
+authors = [{name = "AfkaraLP"}]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,14 +31,11 @@ dependencies = [
      "yt-dlp>=2023.10.0",
  ]
 
-[project.scripts]
-voice-cloner = "voice_cloner.cli:main"
-
 [tool.hatch.build.targets.wheel]
-packages = ["src/voice_cloner"]
+packages = ["src/qwen_voice_cloning"]
 
 [tool.uv.extra-build-dependencies]
-voice-cloner = ["hatchling", "editables"]
+qwen_voice_cloning = ["hatchling", "editables"]
 
 [[tool.uv.index]]
 name = "pytorch-cu128"

@@ -67,7 +67,7 @@ class VoiceCloner:
         attn_implementation: str = "sdpa",
         whisper_model: str = "base",
     ):
-        """Initialize the Voice Cloner with Qwen TTS model.
+        """Initialize the Web UI with Qwen TTS model.
 
         Args:
             model_name: HuggingFace model identifier

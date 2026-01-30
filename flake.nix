@@ -1,5 +1,5 @@
 {
-  description = "Voice Cloner - Easy voice cloning using Qwen TTS";
+  description = "Qwen3 TTS Web UI - Easy voice cloning using Qwen TTS";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
