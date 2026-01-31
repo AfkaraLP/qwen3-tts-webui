@@ -37,6 +37,10 @@ packages = ["src/qwen_voice_cloning"]
 [tool.uv.extra-build-dependencies]
 qwen_voice_cloning = ["hatchling", "editables"]
 
+[tool.ruff]
+lint.select = ["ALL"]
+preview = false
+
 [[tool.uv.index]]
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
