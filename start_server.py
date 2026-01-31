@@ -1,53 +1,65 @@
 #!/usr/bin/env python3
-"""
-Web UI Server Launcher
-Start the FastAPI server for voice cloning functionality
+"""Web UI Server Launcher.
+
+Start the FastAPI server for voice cloning functionality.
 """
 
+import argparse
+import itertools
+import json
+import logging
 import os
 import sys
-import argparse
 import threading
 import time
-import itertools
+import urllib.error
+import urllib.request
 from pathlib import Path
+
+import uvicorn
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s]: %(message)s",
+)
 
 # Add src to path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-import uvicorn  # noqa: E402
-import urllib.request  # noqa: E402
-import urllib.error  # noqa: E402
-
 
 class LoadingSpinner:
-    """A terminal loading spinner that shows while the model is loading"""
+    """A terminal loading spinner that shows while the model is loading."""
 
-    def __init__(self, port: int):
+    def __init__(self, port: int) -> None:
+        """Initialize the loading spinner.
+
+        Args:
+            port: The port number to check for server health.
+
+        """
         self.port = port
         self.spinning = True
         self.spinner_chars = itertools.cycle(
-            ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
         )
-        self.thread = None
+        self.thread: threading.Thread | None = None
         self.model_loaded = False
 
     def _check_health(self) -> bool:
-        """Check if the server is healthy and model is loaded"""
+        """Check if the server is healthy and model is loaded."""
         try:
             url = f"http://localhost:{self.port}/health"
-            req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=2) as response:
-                import json
-
+            req = urllib.request.Request(url, method="GET")  # noqa: S310
+            with urllib.request.urlopen(req, timeout=2) as response:  # noqa: S310
                 data = json.loads(response.read().decode())
                 return data.get("voice_cloner_loaded", False)
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, Exception):
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
             return False
 
-    def _spin(self):
-        """Run the spinner animation"""
+    def _spin(self) -> None:
+        """Run the spinner animation."""
         start_time = time.time()
         while self.spinning:
             elapsed = time.time() - start_time
@@ -70,24 +82,25 @@ class LoadingSpinner:
         # Clear the spinner line and print success message
         if self.model_loaded:
             sys.stdout.write("\r" + " " * 80 + "\r")  # Clear line
-            sys.stdout.write("✓ Model loaded successfully! Server is ready.\n")
+            sys.stdout.write("Model loaded successfully! Server is ready.\n")
             sys.stdout.flush()
 
-    def start(self):
-        """Start the spinner in a background thread"""
+    def start(self) -> None:
+        """Start the spinner in a background thread."""
         self.thread = threading.Thread(target=self._spin, daemon=True)
         self.thread.start()
 
-    def stop(self):
-        """Stop the spinner"""
+    def stop(self) -> None:
+        """Stop the spinner."""
         self.spinning = False
         if self.thread:
             self.thread.join(timeout=1)
 
 
-def main():
+def main() -> None:
+    """Start the Qwen TTS WebUI server."""
     parser = argparse.ArgumentParser(description="Start the Web UI")
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--host", default="localhost", help="Host to bind to")
     parser.add_argument(
         "--port",
         type=int,
@@ -95,16 +108,21 @@ def main():
         help="Port to bind to",
     )
     parser.add_argument(
-        "--reload", action="store_true", help="Enable auto-reload for development"
+        "--reload",
+        action="store_true",
+        help="Enable auto-reload for development",
     )
     parser.add_argument(
-        "--workers", type=int, default=1, help="Number of worker processes"
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of worker processes",
     )
     parser.add_argument(
         "--device",
         type=str,
         default=None,
-        help="Device backend to use (e.g., 'cuda:0', 'mps', 'cpu'). Auto-detected if not specified.",
+        help="Manually set device backend to use (e.g., 'cuda:0', 'mps', 'cpu')",
     )
 
     args = parser.parse_args()
@@ -117,17 +135,15 @@ def main():
     if args.device:
         os.environ["VOICE_CLONER_DEVICE"] = args.device
 
-    print("Starting Qwen TTS WebUI Server")
-    print(f"Host: {args.host}")
-    print(f"Port: {args.port}")
-    print(f"Auto-reload: {args.reload}")
-    print(f"Workers: {args.workers}")
-    print(f"Device: {args.device or 'auto-detect'}")
-    print(f"Working directory: {project_dir}")
-    print()
-    print(f"Web UI will be available at: http://localhost:{args.port}")
-    print(f"API Documentation: http://localhost:{args.port}/docs")
-    print()
+    logger.info("Starting Qwen TTS WebUI Server")
+    logger.info("Host: %s", args.host)
+    logger.info("Port: %s", args.port)
+    logger.info("Auto-reload: %s", args.reload)
+    logger.info("Workers: %s", args.workers)
+    logger.info("Device: %s", args.device or "auto-detect")
+    logger.info("Working directory: %s\n", project_dir)
+    logger.info("Web UI will be available at: http://localhost:%s", args.port)
+    logger.info("API Documentation: http://localhost:%s/docs\n", args.port)
 
     # Start the loading spinner in a background thread
     spinner = LoadingSpinner(args.port)

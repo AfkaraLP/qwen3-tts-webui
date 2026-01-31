@@ -1,20 +1,30 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+"""FastAPI server for Qwen Voice Cloning Web UI."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
 import os
 import shutil
-import uuid
-import json
-import hashlib
-from pathlib import Path
-from typing import Optional, List, Union
-import logging
+import subprocess
 import tempfile
 import time
+import uuid
+from pathlib import Path
+from typing import TYPE_CHECKING, Annotated, Any
+
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from pydub import AudioSegment
 
 from qwen_voice_cloning import VoiceCloner
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +46,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Global voice cloner instance
-voice_cloner = None
+voice_cloner: VoiceCloner | None = None
 
 # Directory setup
 REFERENCE_DIR = Path("reference_audios")
@@ -49,98 +59,108 @@ REFERENCE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
-def safe_delete_file(file_path: Union[str, Path]) -> None:
-    """Safely delete a file if it exists"""
+def safe_delete_file(file_path: str | Path) -> None:
+    """Safely delete a file if it exists."""
     try:
         Path(file_path).unlink(missing_ok=True)
-    except Exception as e:
-        logger.warning(f"Failed to delete file {file_path}: {e}")
+    except OSError:
+        logger.warning("Failed to delete file %s", file_path)
 
 
 # Initialize metadata files
 if not REFERENCE_METADATA_FILE.exists():
-    with open(REFERENCE_METADATA_FILE, "w") as f:
+    with REFERENCE_METADATA_FILE.open("w") as f:
         json.dump({}, f)
 
 if not GENERATED_METADATA_FILE.exists():
-    with open(GENERATED_METADATA_FILE, "w") as f:
+    with GENERATED_METADATA_FILE.open("w") as f:
         json.dump({}, f)
 
 
 class CloneRequest(BaseModel):
+    """Request model for voice cloning."""
+
     text: str
-    ref_audio_id: Optional[str] = None
-    ref_text: Optional[str] = None
+    ref_audio_id: str | None = None
+    ref_text: str | None = None
     language: str = "auto"
 
 
 class SpeakerSegment(BaseModel):
-    """A single speaker segment for multi-speaker generation"""
+    """A single speaker segment for multi-speaker generation."""
 
     text: str
     ref_audio_id: str
-    ref_text: Optional[str] = None
+    ref_text: str | None = None
     language: str = "auto"
 
 
 class MultiSpeakerCloneRequest(BaseModel):
-    """Request for multi-speaker sequential generation"""
+    """Request for multi-speaker sequential generation."""
 
-    segments: List[SpeakerSegment]
+    segments: list[SpeakerSegment]
 
 
 class YouTubeCloneRequest(BaseModel):
+    """Request model for YouTube-based voice cloning."""
+
     text: str
     youtube_url: str
-    ref_text: Optional[str] = None
+    ref_text: str | None = None
     language: str = "auto"
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class RenameRequest(BaseModel):
+    """Request model for renaming a reference audio."""
+
     name: str
 
 
 class CloneResponse(BaseModel):
+    """Response model for voice cloning tasks."""
+
     task_id: str
     status: str
-    output_path: Optional[str] = None
+    output_path: str | None = None
     message: str
-    estimated_time: Optional[int] = None  # Estimated time in seconds
+    estimated_time: int | None = None  # Estimated time in seconds
 
 
 class ReferenceAudio(BaseModel):
+    """Model representing a reference audio file."""
+
     id: str
     filename: str
     original_name: str
-    name: Optional[str] = None
-    ref_text: Optional[str] = None
+    name: str | None = None
+    ref_text: str | None = None
     created_at: str
 
 
 class GeneratedAudio(BaseModel):
+    """Model representing a generated audio file."""
+
     id: str
     filename: str
     ref_audio_id: str
     ref_audio_name: str
     generated_text: str
     created_at: str
-    generation_time_seconds: Optional[float] = None
+    generation_time_seconds: float | None = None
 
 
 # In-memory task tracking
-tasks = {}
-cancelled_tasks = set()
+tasks: dict[str, dict[str, Any]] = {}
+cancelled_tasks: set[str] = set()
 
 
-def reindex_generated_audios():
+def reindex_generated_audios() -> None:
     """Reindex generated audios from disk and metadata on startup.
 
     This ensures that after a server restart, previously generated audios
     are still accessible via the /tasks/{task_id}/audio endpoint.
     """
-    global tasks
-
     generated_metadata = load_generated_metadata()
     reindexed_count = 0
     removed_count = 0
@@ -189,7 +209,7 @@ def reindex_generated_audios():
                 }
                 metadata_updated = True
                 reindexed_count += 1
-                logger.info(f"Recovered orphaned audio file: {filename}")
+                logger.info("Recovered orphaned audio file: %s", filename)
 
     # Save updated metadata if changes were made
     if metadata_updated:
@@ -197,92 +217,103 @@ def reindex_generated_audios():
 
     if reindexed_count > 0 or removed_count > 0:
         logger.info(
-            f"Reindexed {reindexed_count} generated audio(s), "
-            f"removed {removed_count} stale metadata entries"
+            "Reindexed %d generated audio(s), removed %d stale metadata entries",
+            reindexed_count,
+            removed_count,
         )
 
 
-def initialize_voice_cloner():
-    global voice_cloner
+def initialize_voice_cloner() -> None:
+    """Initialize the global voice cloner instance."""
+    global voice_cloner  # noqa: PLW0603
     if voice_cloner is None:
         # Get device from environment variable (set by start_server.py --device flag)
         device = os.environ.get("VOICE_CLONER_DEVICE", None)
         device_info = f" on device '{device}'" if device else " (auto-detecting device)"
-        logger.info(f"Initializing VoiceCloner{device_info}...")
+        logger.info("Initializing VoiceCloner%s...", device_info)
         try:
             voice_cloner = VoiceCloner(device=device)
             logger.info(
-                f"VoiceCloner initialized successfully on {voice_cloner.device}"
+                "VoiceCloner initialized successfully on %s",
+                voice_cloner.device,
             )
-        except Exception as e:
-            logger.error(f"Failed to initialize VoiceCloner: {e}")
+        except Exception:
+            logger.exception("Failed to initialize VoiceCloner")
             raise
 
 
-def load_reference_metadata():
+def load_reference_metadata() -> dict[str, Any]:
+    """Load reference audio metadata from file."""
     try:
-        with open(REFERENCE_METADATA_FILE, "r") as f:
+        with REFERENCE_METADATA_FILE.open() as f:
             return json.load(f)
-    except Exception as e:
-        logger.error(f"Error loading reference metadata: {e}")
+    except Exception:
+        logger.exception("Error loading reference metadata")
         return {}
 
 
-def save_reference_metadata(metadata):
+def save_reference_metadata(metadata: dict[str, Any]) -> None:
+    """Save reference audio metadata to file."""
     try:
-        with open(REFERENCE_METADATA_FILE, "w") as f:
+        with REFERENCE_METADATA_FILE.open("w") as f:
             json.dump(metadata, f, indent=2)
-    except Exception as e:
-        logger.error(f"Error saving reference metadata: {e}")
+    except Exception:
+        logger.exception("Error saving reference metadata")
 
 
 def compute_file_hash(file_path: Path) -> str:
-    """Compute SHA256 hash of a file"""
+    """Compute SHA256 hash of a file."""
     hash_sha256 = hashlib.sha256()
-    with open(file_path, "rb") as f:
+    with file_path.open("rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_sha256.update(chunk)
     return hash_sha256.hexdigest()
 
 
-def find_duplicate_by_file_hash(file_hash: str, metadata: dict) -> Optional[str]:
-    """Find existing reference with same file hash"""
+def find_duplicate_by_file_hash(file_hash: str, metadata: dict[str, Any]) -> str | None:
+    """Find existing reference with same file hash."""
     for audio_id, data in metadata.items():
         if "file_hash" in data and data["file_hash"] == file_hash:
             return audio_id
     return None
 
 
-def load_generated_metadata():
+def load_generated_metadata() -> dict[str, Any]:
+    """Load generated audio metadata from file."""
     try:
-        with open(GENERATED_METADATA_FILE, "r") as f:
+        with GENERATED_METADATA_FILE.open() as f:
             return json.load(f)
-    except Exception as e:
-        logger.error(f"Error loading generated metadata: {e}")
+    except Exception:
+        logger.exception("Error loading generated metadata")
         return {}
 
 
-def save_generated_metadata(metadata):
+def save_generated_metadata(metadata: dict[str, Any]) -> None:
+    """Save generated audio metadata to file."""
     try:
-        with open(GENERATED_METADATA_FILE, "w") as f:
+        with GENERATED_METADATA_FILE.open("w") as f:
             json.dump(metadata, f, indent=2)
-    except Exception as e:
-        logger.error(f"Error saving generated metadata: {e}")
+    except Exception:
+        logger.exception("Error saving generated metadata")
 
 
 def estimate_generation_time(text_length: int) -> int:
-    """Estimate generation time based on text length (rough estimate: ~3 seconds per 10 characters)"""
+    """Estimate generation time based on text length.
+
+    Rough estimate: ~3 seconds per 10 characters.
+    """
     return max(30, (text_length // 10) * 3)  # Minimum 30 seconds
 
 
+class YouTubeDownloadError(Exception):
+    """Exception raised when YouTube audio download fails."""
+
+
 def download_youtube_audio(youtube_url: str) -> str:
-    """Download audio from YouTube URL and return path to downloaded file"""
+    """Download audio from YouTube URL and return path to downloaded file."""
     temp_dir = tempfile.mkdtemp()
 
     try:
-        # Use subprocess to call yt-dlp directly to avoid typing issues
-        import subprocess
-
         cmd = [
             "yt-dlp",
             "--format",
@@ -293,31 +324,40 @@ def download_youtube_audio(youtube_url: str) -> str:
             "--audio-quality",
             "192",
             "--output",
-            os.path.join(temp_dir, "audio.%(ext)s"),
+            str(Path(temp_dir) / "audio.%(ext)s"),
             "--quiet",
             "--no-warnings",
             youtube_url,
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
         if result.returncode != 0:
-            raise Exception(f"yt-dlp failed: {result.stderr}")
+            msg = f"yt-dlp failed: {result.stderr}"
+            raise YouTubeDownloadError(msg)  # noqa: TRY301
 
         # Find the downloaded audio file
-        for file in os.listdir(temp_dir):
-            if file.startswith("audio") and file.endswith(".wav"):
-                return os.path.join(temp_dir, file)
+        for file in Path(temp_dir).iterdir():
+            if file.name.startswith("audio") and file.name.endswith(".wav"):
+                return str(file)
 
-        raise Exception("Audio file not found after download")
+        msg = "Audio file not found after download"
+        raise YouTubeDownloadError(msg)  # noqa: TRY301
 
+    except YouTubeDownloadError:
+        # Clean up temp directory on error
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
     except Exception as e:
         # Clean up temp directory on error
         shutil.rmtree(temp_dir, ignore_errors=True)
-        raise Exception(f"Failed to download YouTube audio: {e}")
+        msg = f"Failed to download YouTube audio: {e}"
+        raise YouTubeDownloadError(msg) from e
 
 
 def trim_audio_to_max_length(
-    audio_path: str, max_duration: int = 60, silence_thresh_db: int = -40
+    audio_path: str,
+    max_duration: int = 60,
+    silence_thresh_db: int = -40,
 ) -> str:
     """Trim audio to maximum duration (in seconds) and remove trailing silence.
 
@@ -325,10 +365,12 @@ def trim_audio_to_max_length(
         audio_path: Path to the audio file
         max_duration: Maximum duration in seconds (default 60)
         silence_thresh_db: Silence threshold in dB (default -40dB)
+
+    Returns:
+        Path to trimmed audio file, or original if no trimming needed.
+
     """
     try:
-        from pydub import AudioSegment
-
         audio = AudioSegment.from_file(audio_path)
         was_trimmed = False
 
@@ -363,7 +405,8 @@ def trim_audio_to_max_length(
             audio = audio[: end_pos + buffer_ms]
             was_trimmed = True
             logger.info(
-                f"Trimmed {original_length - end_pos - buffer_ms}ms of trailing silence from audio"
+                "Trimmed %dms of trailing silence from audio",
+                original_length - end_pos - buffer_ms,
             )
 
         if was_trimmed:
@@ -372,14 +415,14 @@ def trim_audio_to_max_length(
             audio.export(trimmed_path, format="wav")
             return trimmed_path
 
-        return audio_path
-    except Exception as e:
-        logger.warning(f"Failed to trim audio {audio_path}: {e}")
-        return audio_path
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to trim audio %s", audio_path)
+
+    return audio_path
 
 
-def get_supported_languages():
-    """Return list of supported languages"""
+def get_supported_languages() -> list[str]:
+    """Return list of supported languages."""
     return [
         "auto",
         "Chinese",
@@ -396,7 +439,8 @@ def get_supported_languages():
 
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
+    """Handle application startup."""
     # Reindex generated audios first (before voice cloner init, as it's faster)
     reindex_generated_audios()
     # Initialize the voice cloner model
@@ -404,24 +448,29 @@ async def startup_event():
 
 
 @app.get("/", response_class=HTMLResponse)
-async def get_web_ui():
+async def get_web_ui() -> FileResponse:
+    """Serve the web UI."""
     return FileResponse("static/index.html")
 
 
 @app.get("/favicon.ico")
-async def favicon():
+async def favicon() -> FileResponse:
+    """Serve the favicon."""
     return FileResponse("static/qwentts.ico")
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, Any]:
+    """Check API health status."""
     return {"status": "healthy", "voice_cloner_loaded": voice_cloner is not None}
 
 
 @app.post("/upload-reference", response_model=ReferenceAudio)
 async def upload_reference_audio(
-    file: UploadFile = File(...), ref_text: Optional[str] = Form(None)
-):
+    file: Annotated[UploadFile, File(...)],
+    ref_text: Annotated[str | None, Form()] = None,
+) -> ReferenceAudio:
+    """Upload a reference audio file."""
     if not voice_cloner:
         raise HTTPException(status_code=503, detail="Voice cloner not initialized")
 
@@ -432,10 +481,10 @@ async def upload_reference_audio(
     # Save file temporarily to compute hash
     temp_path = REFERENCE_DIR / f"temp_upload_{uuid.uuid4()}.tmp"
     try:
-        with open(temp_path, "wb") as buffer:
+        with temp_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}") from e
 
     # Trim audio to max 1 minute before processing
     trimmed_path = trim_audio_to_max_length(str(temp_path), 60)
@@ -450,7 +499,7 @@ async def upload_reference_audio(
     if existing_audio_id:
         # Clean up temp files
         temp_path.unlink()
-        if trimmed_path != temp_path:
+        if trimmed_path != str(temp_path):
             Path(trimmed_path).unlink()
 
         # Return existing reference
@@ -477,16 +526,16 @@ async def upload_reference_audio(
     except Exception as e:
         # Clean up temp files on error
         temp_path.unlink()
-        if trimmed_path != temp_path:
+        if trimmed_path != str(temp_path):
             Path(trimmed_path).unlink()
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}") from e
 
     # Auto-transcribe if ref_text not provided (after trimming)
     if not ref_text:
         try:
             ref_text = voice_cloner.transcribe_audio(str(saved_path))
-        except Exception as e:
-            logger.warning(f"Failed to auto-transcribe {saved_path}: {e}")
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to auto-transcribe %s", saved_path)
 
     # Save metadata with file hash
     metadata[audio_id] = {
@@ -507,8 +556,9 @@ async def upload_reference_audio(
     )
 
 
-@app.get("/references", response_model=List[ReferenceAudio])
-async def get_reference_audios():
+@app.get("/references", response_model=list[ReferenceAudio])
+async def get_reference_audios() -> list[ReferenceAudio]:
+    """Get all reference audios."""
     metadata = load_reference_metadata()
     references = []
     metadata_updated = False
@@ -522,8 +572,8 @@ async def get_reference_audios():
                 try:
                     data["file_hash"] = compute_file_hash(file_path)
                     metadata_updated = True
-                except Exception as e:
-                    logger.warning(f"Failed to compute hash for {file_path}: {e}")
+                except Exception:  # noqa: BLE001
+                    logger.warning("Failed to compute hash for %s", file_path)
 
             references.append(
                 ReferenceAudio(
@@ -533,7 +583,7 @@ async def get_reference_audios():
                     name=data.get("name"),
                     ref_text=data.get("ref_text"),
                     created_at=data["created_at"],
-                )
+                ),
             )
 
     # Save metadata if we updated it with file hashes
@@ -544,7 +594,8 @@ async def get_reference_audios():
 
 
 @app.get("/references/{audio_id}/audio")
-async def get_reference_audio(audio_id: str):
+async def get_reference_audio(audio_id: str) -> FileResponse:
+    """Get a specific reference audio file."""
     metadata = load_reference_metadata()
     if audio_id not in metadata:
         raise HTTPException(status_code=404, detail="Reference audio not found")
@@ -554,12 +605,15 @@ async def get_reference_audio(audio_id: str):
         raise HTTPException(status_code=404, detail="Audio file not found")
 
     return FileResponse(
-        file_path, media_type="audio/wav", filename=metadata[audio_id]["original_name"]
+        file_path,
+        media_type="audio/wav",
+        filename=metadata[audio_id]["original_name"],
     )
 
 
 @app.delete("/references/{audio_id}")
-async def delete_reference_audio(audio_id: str):
+async def delete_reference_audio(audio_id: str) -> dict[str, str]:
+    """Delete a reference audio file."""
     metadata = load_reference_metadata()
     if audio_id not in metadata:
         raise HTTPException(status_code=404, detail="Reference audio not found")
@@ -577,7 +631,11 @@ async def delete_reference_audio(audio_id: str):
 
 
 @app.put("/references/{audio_id}/name", response_model=dict)
-async def rename_reference_audio(audio_id: str, request: RenameRequest):
+async def rename_reference_audio(
+    audio_id: str,
+    request: RenameRequest,
+) -> dict[str, str]:
+    """Rename a reference audio."""
     metadata = load_reference_metadata()
     if audio_id not in metadata:
         raise HTTPException(status_code=404, detail="Reference audio not found")
@@ -590,7 +648,11 @@ async def rename_reference_audio(audio_id: str, request: RenameRequest):
 
 
 @app.post("/clone", response_model=CloneResponse)
-async def clone_voice(background_tasks: BackgroundTasks, request: CloneRequest):
+async def clone_voice_endpoint(
+    background_tasks: BackgroundTasks,
+    request: CloneRequest,
+) -> CloneResponse:
+    """Clone a voice using reference audio."""
     if not voice_cloner:
         raise HTTPException(status_code=503, detail="Voice cloner not initialized")
 
@@ -634,14 +696,18 @@ async def clone_voice(background_tasks: BackgroundTasks, request: CloneRequest):
     }
 
     return CloneResponse(
-        task_id=task_id, status="processing", message="Voice cloning started"
+        task_id=task_id,
+        status="processing",
+        message="Voice cloning started",
     )
 
 
 @app.post("/clone-with-youtube", response_model=CloneResponse)
 async def clone_voice_with_youtube(
-    background_tasks: BackgroundTasks, request: YouTubeCloneRequest
-):
+    background_tasks: BackgroundTasks,
+    request: YouTubeCloneRequest,
+) -> CloneResponse:
+    """Clone a voice using YouTube audio as reference."""
     if not voice_cloner:
         raise HTTPException(status_code=503, detail="Voice cloner not initialized")
 
@@ -658,8 +724,8 @@ async def clone_voice_with_youtube(
     # Download audio from YouTube
     try:
         youtube_audio_path = download_youtube_audio(request.youtube_url)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except YouTubeDownloadError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     # Trim audio to max 1 minute
     trimmed_audio_path = trim_audio_to_max_length(youtube_audio_path, 60)
@@ -669,8 +735,8 @@ async def clone_voice_with_youtube(
     if not ref_text:
         try:
             ref_text = voice_cloner.transcribe_audio(trimmed_audio_path)
-        except Exception as e:
-            logger.warning(f"Failed to auto-transcribe YouTube audio: {e}")
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to auto-transcribe YouTube audio")
 
     # Save as reference audio
     audio_id = str(uuid.uuid4())
@@ -680,7 +746,7 @@ async def clone_voice_with_youtube(
     try:
         shutil.move(trimmed_audio_path, str(saved_path))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}") from e
 
     # Save metadata
     metadata = load_reference_metadata()
@@ -720,13 +786,14 @@ async def clone_voice_with_youtube(
 
 
 @app.post("/clone-with-upload", response_model=CloneResponse)
-async def clone_voice_with_upload(
+async def clone_voice_with_upload(  # noqa: C901, PLR0915
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    text: str = Form(...),
-    ref_text: Optional[str] = Form(None),
-    language: str = Form("auto"),
-):
+    file: Annotated[UploadFile, File(...)],
+    text: Annotated[str, Form(...)],
+    ref_text: Annotated[str | None, Form()] = None,
+    language: Annotated[str, Form()] = "auto",
+) -> CloneResponse:
+    """Clone a voice using an uploaded audio file as reference."""
     if not voice_cloner:
         raise HTTPException(status_code=503, detail="Voice cloner not initialized")
 
@@ -737,10 +804,10 @@ async def clone_voice_with_upload(
     # Save uploaded file temporarily
     temp_path = REFERENCE_DIR / f"temp_upload_{uuid.uuid4()}.tmp"
     try:
-        with open(temp_path, "wb") as buffer:
+        with temp_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}") from e
 
     # Trim audio to max 1 minute before processing
     trimmed_path = trim_audio_to_max_length(str(temp_path), 60)
@@ -752,8 +819,8 @@ async def clone_voice_with_upload(
     metadata = load_reference_metadata()
     existing_audio_id = find_duplicate_by_file_hash(file_hash, metadata)
 
-    ref_audio_path = None
-    ref_audio_id_to_use = None
+    ref_audio_path: Path | None = None
+    ref_audio_id_to_use: str | None = None
 
     if existing_audio_id:
         # Use existing file
@@ -788,14 +855,17 @@ async def clone_voice_with_upload(
             safe_delete_file(temp_path)
             if trimmed_path != str(temp_path):
                 safe_delete_file(trimmed_path)
-            raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save file: {e}",
+            ) from e
 
         # Auto-transcribe if ref_text not provided (after trimming)
         if not ref_text:
             try:
                 ref_text = voice_cloner.transcribe_audio(str(ref_audio_path))
-            except Exception as e:
-                logger.warning(f"Failed to auto-transcribe {ref_audio_path}: {e}")
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to auto-transcribe %s", ref_audio_path)
 
         # Save metadata with file hash
         metadata[audio_id] = {
@@ -841,8 +911,9 @@ async def clone_voice_with_upload(
 
 @app.post("/clone-multi-speaker", response_model=CloneResponse)
 async def clone_voice_multi_speaker(
-    background_tasks: BackgroundTasks, request: MultiSpeakerCloneRequest
-):
+    background_tasks: BackgroundTasks,
+    request: MultiSpeakerCloneRequest,
+) -> CloneResponse:
     """Clone voice with multiple speakers in sequence, concatenating the results."""
     if not voice_cloner:
         raise HTTPException(status_code=503, detail="Voice cloner not initialized")
@@ -853,7 +924,7 @@ async def clone_voice_multi_speaker(
 
     # Validate and prepare all segments
     metadata = load_reference_metadata()
-    prepared_segments = []
+    prepared_segments: list[dict[str, str]] = []
 
     for i, segment in enumerate(request.segments):
         if not segment.ref_audio_id:
@@ -864,7 +935,8 @@ async def clone_voice_multi_speaker(
 
         if segment.ref_audio_id not in metadata:
             raise HTTPException(
-                status_code=404, detail=f"Segment {i + 1}: Reference audio not found"
+                status_code=404,
+                detail=f"Segment {i + 1}: Reference audio not found",
             )
 
         ref_data = metadata[segment.ref_audio_id]
@@ -880,12 +952,14 @@ async def clone_voice_multi_speaker(
         ref_text = segment.ref_text or ref_data.get("ref_text")
         if not ref_text:
             raise HTTPException(
-                status_code=400, detail=f"Segment {i + 1}: Reference text is required"
+                status_code=400,
+                detail=f"Segment {i + 1}: Reference text is required",
             )
 
         if not segment.text.strip():
             raise HTTPException(
-                status_code=400, detail=f"Segment {i + 1}: Text to generate is required"
+                status_code=400,
+                detail=f"Segment {i + 1}: Text to generate is required",
             )
 
         prepared_segments.append(
@@ -894,7 +968,7 @@ async def clone_voice_multi_speaker(
                 "ref_audio_path": str(ref_audio_path),
                 "ref_text": ref_text,
                 "language": segment.language,
-            }
+            },
         )
 
     # Generate task ID
@@ -916,20 +990,29 @@ async def clone_voice_multi_speaker(
         "current_segment": 0,
     }
 
+    msg = f"Multi-speaker voice cloning started with {len(prepared_segments)} segments"
     return CloneResponse(
         task_id=task_id,
         status="processing",
-        message=f"Multi-speaker voice cloning started with {len(prepared_segments)} segments",
+        message=msg,
     )
 
 
+class VoiceClonerNotInitializedError(Exception):
+    """Exception raised when voice cloner is not initialized."""
+
+
 def process_cloning_task(
-    task_id: str, text: str, ref_audio_path: str, ref_text: str, language: str
-):
+    task_id: str,
+    text: str,
+    ref_audio_path: str,
+    ref_text: str,
+    language: str,
+) -> None:
+    """Process a voice cloning task in the background."""
     try:
-        global voice_cloner
         if not voice_cloner:
-            raise Exception("Voice cloner not initialized")
+            raise VoiceClonerNotInitializedError  # noqa: TRY301
 
         # Start timing
         start_time = time.time()
@@ -958,7 +1041,7 @@ def process_cloning_task(
             tasks[task_id]["status"] = "cancelled"
             return
 
-        sr, result_path = voice_cloner.clone_voice(
+        _sr, _result_path = voice_cloner.clone_voice(
             text=text,
             ref_audio=ref_audio_path,
             ref_text=ref_text,
@@ -986,7 +1069,9 @@ def process_cloning_task(
         tasks[task_id]["generation_time_seconds"] = round(generation_time, 2)
 
         logger.info(
-            f"Audio generation completed in {generation_time:.2f} seconds for task {task_id}"
+            "Audio generation completed in %.2f seconds for task %s",
+            generation_time,
+            task_id,
         )
 
         # Save to generated metadata
@@ -998,7 +1083,8 @@ def process_cloning_task(
         for ref_id, ref_data in reference_metadata.items():
             if ref_id == tasks[task_id].get("ref_audio_id"):
                 ref_audio_name = ref_data.get("name") or ref_data.get(
-                    "original_name", "Unknown"
+                    "original_name",
+                    "Unknown",
                 )
                 break
 
@@ -1012,27 +1098,32 @@ def process_cloning_task(
         }
         save_generated_metadata(generated_metadata)
 
-    except Exception as e:
-        logger.error(f"Cloning task {task_id} failed: {e}")
+    except Exception:
+        logger.exception("Cloning task %s failed", task_id)
         tasks[task_id]["status"] = "failed"
-        tasks[task_id]["error"] = str(e)
+        tasks[task_id]["error"] = "Cloning task failed"
 
 
-def process_multi_speaker_cloning_task(
+MAX_SUMMARY_LEN = 200
+SUMMARY_LEN = 50
+COMBINED_LEN = 197
+
+
+def process_multi_speaker_cloning_task(  # noqa: C901
     task_id: str,
-    segments: List[dict],
-):
+    segments: Sequence[dict[str, str]],
+) -> None:
     """Process multi-speaker voice cloning task.
 
     Args:
         task_id: Unique task identifier
         segments: List of dicts with keys: text, ref_audio_path, ref_text, language
+
     """
-    temp_audio_paths: List[str] = []
+    temp_audio_paths: list[str] = []
     try:
-        global voice_cloner
         if not voice_cloner:
-            raise Exception("Voice cloner not initialized")
+            raise VoiceClonerNotInitializedError  # noqa: TRY301
 
         # Start timing
         start_time = time.time()
@@ -1066,7 +1157,7 @@ def process_multi_speaker_cloning_task(
             # Generate audio for this segment
             temp_output_path = OUTPUT_DIR / f"temp_{task_id}_segment_{i}.wav"
 
-            sr, result_path = voice_cloner.clone_voice(
+            _sr, _result_path = voice_cloner.clone_voice(
                 text=segment["text"],
                 ref_audio=segment["ref_audio_path"],
                 ref_text=segment["ref_text"],
@@ -1089,9 +1180,7 @@ def process_multi_speaker_cloning_task(
         output_filename = f"cloned_{task_id}.wav"
         output_path = OUTPUT_DIR / output_filename
 
-        from voice_cloner import VoiceCloner as VC
-
-        VC.concatenate_audios(temp_audio_paths, str(output_path))
+        VoiceCloner.concatenate_audios(temp_audio_paths, str(output_path))
 
         # Clean up temp files
         for temp_path in temp_audio_paths:
@@ -1115,16 +1204,18 @@ def process_multi_speaker_cloning_task(
         tasks[task_id]["generation_time_seconds"] = round(generation_time, 2)
 
         logger.info(
-            f"Multi-speaker audio generation completed in {generation_time:.2f} seconds for task {task_id}"
+            "Multi-speaker audio generation completed in %s seconds for task %s",
+            generation_time,
+            task_id,
         )
 
         # Save to generated metadata
         generated_metadata = load_generated_metadata()
 
         # Create combined text summary for metadata
-        combined_text = " | ".join([seg["text"][:50] for seg in segments])
-        if len(combined_text) > 200:
-            combined_text = combined_text[:197] + "..."
+        combined_text = " | ".join([seg["text"][:SUMMARY_LEN] for seg in segments])
+        if len(combined_text) > MAX_SUMMARY_LEN:
+            combined_text = combined_text[:COMBINED_LEN] + "..."
 
         generated_metadata[task_id] = {
             "filename": output_filename,
@@ -1138,26 +1229,23 @@ def process_multi_speaker_cloning_task(
         }
         save_generated_metadata(generated_metadata)
 
-    except Exception as e:
-        logger.error(f"Multi-speaker cloning task {task_id} failed: {e}")
+    except Exception:
+        logger.exception("Multi-speaker cloning task %s failed", task_id)
         tasks[task_id]["status"] = "failed"
-        tasks[task_id]["error"] = str(e)
+        tasks[task_id]["error"] = "Multi-speaker cloning task failed"
         # Clean up any temp files on error
         for temp_path in temp_audio_paths:
             safe_delete_file(temp_path)
 
 
 @app.post("/tasks/{task_id}/cancel")
-async def cancel_task(task_id: str):
+async def cancel_task(task_id: str) -> dict[str, str]:
+    """Cancel a running task."""
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail="Task not found")
 
     task = tasks[task_id]
-    if (
-        task["status"] == "completed"
-        or task["status"] == "failed"
-        or task["status"] == "cancelled"
-    ):
+    if task["status"] in ("completed", "failed", "cancelled"):
         raise HTTPException(
             status_code=400,
             detail=f"Task cannot be cancelled, current status: {task['status']}",
@@ -1171,7 +1259,8 @@ async def cancel_task(task_id: str):
 
 
 @app.get("/tasks/{task_id}")
-async def get_task_status(task_id: str):
+async def get_task_status(task_id: str) -> dict[str, Any]:
+    """Get the status of a task."""
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1179,13 +1268,14 @@ async def get_task_status(task_id: str):
 
 
 @app.get("/languages")
-async def get_languages():
-    """Get list of supported languages"""
+async def get_languages() -> dict[str, list[str]]:
+    """Get list of supported languages."""
     return {"languages": get_supported_languages()}
 
 
 @app.get("/tasks/{task_id}/audio")
-async def get_cloned_audio(task_id: str):
+async def get_cloned_audio(task_id: str) -> FileResponse:
+    """Get the cloned audio file for a completed task."""
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1198,12 +1288,15 @@ async def get_cloned_audio(task_id: str):
         raise HTTPException(status_code=404, detail="Output file not found")
 
     return FileResponse(
-        output_path, media_type="audio/wav", filename=f"cloned_voice_{task_id}.wav"
+        output_path,
+        media_type="audio/wav",
+        filename=f"cloned_voice_{task_id}.wav",
     )
 
 
-@app.get("/generated", response_model=List[GeneratedAudio])
-async def get_generated_audios():
+@app.get("/generated")
+async def get_generated_audios() -> list[GeneratedAudio]:
+    """Get all generated audios."""
     metadata = load_generated_metadata()
     generated_audios = []
 
@@ -1220,7 +1313,7 @@ async def get_generated_audios():
                     generated_text=data.get("generated_text", ""),
                     created_at=data.get("created_at", str(file_path.stat().st_ctime)),
                     generation_time_seconds=data.get("generation_time_seconds"),
-                )
+                ),
             )
 
     # Sort by creation time (newest first)
@@ -1230,7 +1323,7 @@ async def get_generated_audios():
 
 
 @app.delete("/generated/{audio_id}")
-async def delete_generated_audio(audio_id: str):
+async def delete_generated_audio(audio_id: str) -> dict[str, str]:
     """Delete a generated audio file and its metadata."""
     metadata = load_generated_metadata()
 
@@ -1249,15 +1342,13 @@ async def delete_generated_audio(audio_id: str):
     save_generated_metadata(metadata)
 
     # Also remove from tasks if present
-    if audio_id in tasks:
-        del tasks[audio_id]
+    tasks.pop(audio_id, None)
 
     return {"message": "Generated audio deleted successfully"}
 
 
 if __name__ == "__main__":
     import uvicorn
-    import os
 
     port = int(os.environ.get("VOICE_CLONER_PORT", "8000"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="127.0.0.1", port=port)

@@ -1,15 +1,30 @@
-import torch
-import soundfile as sf
-import whisper
-import numpy as np
-from qwen_tts import Qwen3TTSModel
+"""Core voice cloning functionality using Qwen TTS model."""
+
+from __future__ import annotations
+
+import logging
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import TYPE_CHECKING
+
+import numpy as np
+import soundfile as sf
+import torch
+import whisper
+from qwen_tts import Qwen3TTSModel
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+
+class _InvalidAudioError(Exception):
+    """Internal exception for invalid audio validation."""
 
 
 def normalize_audio(audio: np.ndarray, target_db: float = -3.0) -> np.ndarray:
-    """
-    Normalize audio to a target peak level in dB.
+    """Normalize audio to a target peak level in dB.
 
     Args:
         audio: Input audio array
@@ -17,6 +32,7 @@ def normalize_audio(audio: np.ndarray, target_db: float = -3.0) -> np.ndarray:
 
     Returns:
         Normalized audio array
+
     """
     # Handle empty or silent audio
     if len(audio) == 0:
@@ -40,33 +56,33 @@ def get_default_device() -> str:
     """Get the default device based on availability."""
     if torch.cuda.is_available():
         return "cuda:0"
-    elif torch.backends.mps.is_available():
+    if torch.backends.mps.is_available():
         return "mps"
-    else:
-        return "cpu"
+    return "cpu"
 
 
 def get_default_dtype(device: str) -> torch.dtype:
     """Get the default dtype based on device capabilities."""
     if device.startswith("cuda"):
         return torch.bfloat16
-    elif device == "mps":
+    if device == "mps":
         # MPS supports float16 better than bfloat16
         return torch.float16
-    else:
-        # CPU fallback - float32 is most compatible
-        return torch.float32
+    # CPU fallback - float32 is most compatible
+    return torch.float32
 
 
 class VoiceCloner:
+    """Voice cloning functionality using Qwen TTS model."""
+
     def __init__(
         self,
         model_name: str = "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: str | None = None,
+        dtype: torch.dtype | None = None,
         attn_implementation: str = "sdpa",
         whisper_model: str = "base",
-    ):
+    ) -> None:
         """Initialize the Web UI with Qwen TTS model.
 
         Args:
@@ -75,6 +91,7 @@ class VoiceCloner:
             dtype: Data type for model weights (or None for auto-detect based on device)
             attn_implementation: Attention implementation
             whisper_model: Whisper model size for transcription
+
         """
         # Auto-detect device if not specified
         if device is None:
@@ -87,7 +104,7 @@ class VoiceCloner:
         self.device = device
         self.dtype = dtype
 
-        print(f"Initializing model on device: {device} with dtype: {dtype}")
+        logger.info("Initializing model on device: %s with dtype: %s", device, dtype)
 
         self.model = Qwen3TTSModel.from_pretrained(
             model_name,
@@ -103,10 +120,9 @@ class VoiceCloner:
         ref_audio: str,
         ref_text: str,
         language: str = "English",
-        output_path: Optional[str] = None,
-    ) -> Tuple[int, str]:
-        """
-        Clone voice from reference audio.
+        output_path: str | None = None,
+    ) -> tuple[int, str]:
+        """Clone voice from reference audio.
 
         Args:
             text: Text to synthesize
@@ -117,6 +133,7 @@ class VoiceCloner:
 
         Returns:
             Tuple of (sample_rate, output_path)
+
         """
         wavs, sr = self.model.generate_voice_clone(
             text=text,
@@ -141,8 +158,7 @@ class VoiceCloner:
         output_dir: str = "outputs",
         language: str = "English",
     ) -> str:
-        """
-        Clone voice from local reference audio file.
+        """Clone voice from local reference audio file.
 
         Args:
             text: Text to synthesize
@@ -153,6 +169,7 @@ class VoiceCloner:
 
         Returns:
             Path to generated audio file
+
         """
         output_dir_path = Path(output_dir)
         output_dir_path.mkdir(exist_ok=True)
@@ -162,7 +179,7 @@ class VoiceCloner:
         text_preview = text[:30].replace(" ", "_").replace("/", "_")
         output_path = output_dir_path / f"{ref_name}_{text_preview}.wav"
 
-        sr, final_path = self.clone_voice(
+        _sr, final_path = self.clone_voice(
             text=text,
             ref_audio=ref_audio_path,
             ref_text=ref_text,
@@ -175,10 +192,9 @@ class VoiceCloner:
     def transcribe_audio(
         self,
         audio_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
     ) -> str:
-        """
-        Transcribe audio file using Whisper.
+        """Transcribe audio file using Whisper.
 
         Args:
             audio_path: Path to audio file
@@ -186,8 +202,9 @@ class VoiceCloner:
 
         Returns:
             Transcription text
+
         """
-        print(f"Transcribing audio: {audio_path}")
+        logger.info("Transcribing audio: %s", audio_path)
 
         result = self.whisper_model.transcribe(audio_path)
         text_result = result.get("text", "")
@@ -202,20 +219,20 @@ class VoiceCloner:
             output_path = str(audio_path_obj.with_suffix(".txt"))
 
         # Save transcript to file
-        with open(output_path, "w", encoding="utf-8") as f:
+        with Path(output_path).open("w", encoding="utf-8") as f:
             f.write(transcript)
 
-        print(f"✅ Transcription saved to: {output_path}")
+        logger.info("Transcription saved to: %s", output_path)
         return transcript
 
     def get_or_create_transcript(
         self,
         ref_audio: str,
-        ref_text: Optional[str] = None,
+        ref_text: str | None = None,
+        *,
         force_transcribe: bool = False,
     ) -> str:
-        """
-        Get transcript text from file or generate it from audio.
+        """Get transcript text from file or generate it from audio.
 
         Args:
             ref_audio: Path to reference audio file
@@ -224,26 +241,28 @@ class VoiceCloner:
 
         Returns:
             Transcript text
+
         """
         # If ref_text is provided and exists as a file, read it
         if ref_text and Path(ref_text).exists() and not force_transcribe:
-            with open(ref_text, "r", encoding="utf-8") as f:
+            with Path(ref_text).open(encoding="utf-8") as f:
                 transcript = f.read().strip()
                 if not transcript:
-                    print(f"⚠️ Transcript file exists but is empty: {ref_text}")
+                    logger.warning("Transcript file exists but is empty: %s", ref_text)
                 return transcript
 
         # If ref_text is provided text directly, return it
         if ref_text and not Path(ref_text).exists():
             transcript = ref_text.strip()
             if not transcript:
-                print("⚠️ Provided transcript text is empty")
+                logger.warning("Provided transcript text is empty")
             return transcript
 
         # Otherwise, transcribe the audio file
         audio_path = Path(ref_audio)
         if not audio_path.exists():
-            raise FileNotFoundError(f"Reference audio file not found: {ref_audio}")
+            msg = f"Reference audio file not found: {ref_audio}"
+            raise FileNotFoundError(msg)
 
         # Validate audio file
         self._validate_audio_file(str(audio_path))
@@ -252,10 +271,12 @@ class VoiceCloner:
 
         # Use existing transcript if it exists and not forced
         if transcript_path.exists() and not force_transcribe:
-            with open(str(transcript_path), "r", encoding="utf-8") as f:
+            with transcript_path.open(encoding="utf-8") as f:
                 transcript = f.read().strip()
                 if not transcript:
-                    print("⚠️ Existing transcript file is empty, re-transcribing...")
+                    logger.warning(
+                        "Existing transcript file is empty, re-transcribing...",
+                    )
                 else:
                     return transcript
 
@@ -263,55 +284,60 @@ class VoiceCloner:
         return self.transcribe_audio(ref_audio, str(transcript_path))
 
     def _validate_audio_file(self, audio_path: str) -> None:
-        """
-        Validate that the audio file is accessible and not corrupted.
+        """Validate that the audio file is accessible and not corrupted.
 
         Args:
             audio_path: Path to audio file
 
         Raises:
             ValueError: If audio file is invalid
+
         """
         try:
-            import soundfile as sf
-
             # Try to read the audio file metadata
             with sf.SoundFile(audio_path) as f:
                 if f.frames <= 0:
-                    raise ValueError(f"Audio file has no frames: {audio_path}")
+                    msg = f"Audio file has no frames: {audio_path}"
+                    raise _InvalidAudioError(msg)  # noqa: TRY301
                 if f.samplerate <= 0:
-                    raise ValueError(
-                        f"Audio file has invalid sample rate: {audio_path}"
-                    )
-                print(
-                    f"✅ Audio file valid: {audio_path} ({f.frames} frames, {f.samplerate} Hz)"
+                    msg = f"Audio file has invalid sample rate: {audio_path}"
+                    raise _InvalidAudioError(msg)  # noqa: TRY301
+                logger.info(
+                    "Audio file valid: %s (%d frames, %d Hz)",
+                    audio_path,
+                    f.frames,
+                    f.samplerate,
                 )
+        except _InvalidAudioError as e:
+            raise ValueError(str(e)) from e
         except Exception as e:
-            raise ValueError(f"Invalid audio file {audio_path}: {str(e)}")
+            msg = f"Invalid audio file {audio_path}: {e!s}"
+            raise ValueError(msg) from e
 
     @staticmethod
     def concatenate_audios(
-        audio_paths: List[str],
+        audio_paths: Sequence[str],
         output_path: str,
         silence_duration_ms: int = 200,
-    ) -> Tuple[int, str]:
-        """
-        Concatenate multiple audio files into a single file with optional silence between them.
+    ) -> tuple[int, str]:
+        """Concatenate multiple audio files into a single file.
 
         Args:
             audio_paths: List of paths to audio files to concatenate
             output_path: Path to save the concatenated audio
-            silence_duration_ms: Duration of silence between audio segments in milliseconds
+            silence_duration_ms: Duration of silence between audio segments (ms)
 
         Returns:
             Tuple of (sample_rate, output_path)
+
         """
         if not audio_paths:
-            raise ValueError("No audio paths provided for concatenation")
+            msg = "No audio paths provided for concatenation"
+            raise ValueError(msg)
 
         # Read all audio files
-        audio_segments = []
-        sample_rates = []
+        audio_segments: list[np.ndarray] = []
+        sample_rates: list[int] = []
 
         for audio_path in audio_paths:
             data, sr = sf.read(audio_path)
@@ -320,22 +346,24 @@ class VoiceCloner:
 
         # Ensure all sample rates are the same (use the first one as reference)
         target_sr = sample_rates[0]
-        for i, (segment, sr) in enumerate(zip(audio_segments, sample_rates)):
+        for i, (segment, sr) in enumerate(
+            zip(audio_segments, sample_rates, strict=True),
+        ):
             if sr != target_sr:
                 # Resample using simple linear interpolation
                 # For production, consider using librosa or scipy for better resampling
                 ratio = target_sr / sr
                 new_length = int(len(segment) * ratio)
                 indices = np.linspace(0, len(segment) - 1, new_length)
-                segment = np.interp(indices, np.arange(len(segment)), segment)
-                audio_segments[i] = segment
+                resampled = np.interp(indices, np.arange(len(segment)), segment)
+                audio_segments[i] = resampled
 
         # Create silence array
         silence_samples = int(target_sr * silence_duration_ms / 1000)
         silence = np.zeros(silence_samples)
 
         # Concatenate with silence between segments
-        concatenated = []
+        concatenated: list[np.ndarray] = []
         for i, segment in enumerate(audio_segments):
             concatenated.append(segment)
             if i < len(audio_segments) - 1:  # Don't add silence after the last segment
